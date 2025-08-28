@@ -1,1 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>야구 구단 유튜브 영상</title>
+  <style>
+    body { font-family: 'Malgun Gothic', Arial, sans-serif; margin: 0; background: #f6f7fb; }
+    .main-container { max-width: 1200px; margin: 40px auto 0; background: #fff; border-radius: 24px; box-shadow: 0 4px 24px #0001; padding: 40px 36px 32px; }
+    h1 { color: #2c3e50; font-size: 2.2rem; margin-bottom: 18px; font-weight: 700; letter-spacing: -1px; }
+    h2 { color: #1a73e8; font-size: 1.3rem; margin: 36px 0 12px; font-weight: 600; }
+    form { margin-bottom: 28px; display: flex; gap: 12px; align-items: center; }
+    input[type="text"] { flex:1; padding: 10px 16px; font-size: 1.1rem; border: 1.5px solid #d0d4e4; border-radius: 8px; outline: none; transition: border 0.2s; }
+    input[type="text"]:focus { border: 1.5px solid #1a73e8; }
+    button[type="submit"] { padding: 10px 22px; font-size: 1.1rem; background: #1a73e8; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    button[type="submit"]:hover { background: #155ab6; }
+
+    .video-container, .short-form-container { display: grid !important; grid-template-columns: repeat(5, 1fr); gap: 28px; padding: 10px 0; }
+    .video-card { background: #fff; border-radius: 16px; box-shadow: 0 2px 8px #0002; display: flex; flex-direction: column; height: 210px; padding: 0; overflow: hidden; border: 1.5px solid #f0f1f6; transition: box-shadow 0.2s, transform 0.2s; }
+    .video-card:hover { box-shadow: 0 8px 24px #0003; transform: translateY(-4px) scale(1.03); border: 1.5px solid #1a73e8; }
+    .video-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .card-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #222;
+  text-align: center;
+
+  /* 말줄임 관련 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+
+  -webkit-line-clamp: 2;  /* 이미 있던 줄 */
+  line-clamp: 2;          /* ← 이 줄 추가 (표준) */
+}
+
+    .short-form-container .video-card img { aspect-ratio: 9 / 16; object-fit: cover; }
+    .short-form-container { max-height: 600px; overflow-y: auto; border: 1.5px solid #e0e3ef; background: #fafdff; }
+
+    #loading { display:none; text-align:center; margin:20px; }
+    .loader { display:inline-block; width:24px; height:24px; border:4px solid #ccc; border-top:4px solid #1a73e8; border-radius:50%; animation: spin 1s linear infinite; margin-right: 8px; }
+    @keyframes spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+    #no-results { text-align:center; font-size:17px; margin-top:30px; color:#888; background:#f0f3fa; border-radius:12px; padding:24px 0; display:none; }
+  </style>
+</head>
+<body>
+  <div class="main-container">
+    <h1>야구 구단 유튜브 영상</h1>
+
+    <!-- 구단 검색 -->
+    <form id="search-form">
+      <input type="text" id="club-name" list="teams" placeholder="구단 이름 (예: LG 트윈스, 두산 베어스)" required />
+      <datalist id="teams">
+        <option value="LG 트윈스"><option value="두산 베어스"><option value="SSG 랜더스">
+        <option value="키움 히어로즈"><option value="KT 위즈"><option value="KIA 타이거즈">
+        <option value="삼성 라이온즈"><option value="NC 다이노스"><option value="롯데 자이언츠">
+        <option value="한화 이글스">
+      </datalist>
+      <button type="submit">검색</button>
+    </form>
+
+    <div id="loading"><span class="loader"></span> 로딩 중...</div>
+
+    <h2>🎥 롱폼</h2>
+    <div id="long-form" class="video-container"></div>
+
+    <h2>🎬 숏폼 (Shorts)</h2>
+    <div id="short-form" class="video-container short-form-container"></div>
+
+    <div id="no-results">관련 영상을 찾을 수 없습니다.</div>
+  </div>
+
+  <script>
+    document.getElementById('search-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const club = (document.getElementById('club-name').value || '').trim();
+      if (!club) return;
+
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('long-form').innerHTML = '';
+      document.getElementById('short-form').innerHTML = '';
+
+      try {
+        const res = await fetch('/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ club })
+        });
+        const data = await res.json();
+        document.getElementById('loading').style.display = 'none';
+
+        if (data.error || (!data.long?.length && !data.short?.length)) {
+          document.getElementById('no-results').style.display = 'block';
+          return;
+        }
+
+        // 롱폼
+        (data.long || []).forEach(v => {
+          document.getElementById('long-form').insertAdjacentHTML('beforeend', `
+            <div class="video-card">
+              <a href="${v.url}" target="_blank" rel="noopener"><img src="${v.thumbnail}" alt="${v.title}"></a>
+              <div class="card-title">${v.title}</div>
+            </div>
+          `);
+        });
+
+        // 숏폼
+        (data.short || []).forEach(v => {
+          document.getElementById('short-form').insertAdjacentHTML('beforeend', `
+            <div class="video-card">
+              <a href="${v.url}" target="_blank" rel="noopener"><img src="${v.thumbnail}" alt="${v.title}"></a>
+              <div class="card-title">${v.title}</div>
+            </div>
+          `);
+        });
+      } catch (err) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('no-results').style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>
 
