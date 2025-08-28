@@ -3,6 +3,12 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import re
+import os
+import time
+from typing import Tuple
+
+_SEARCH_CACHE = {}
+SEARCH_CACHE_TTL = int(os.getenv("SEARCH_CACHE_TTL", "60"))  # seconds
 
 # ---------------------------
 # 1) 앱/기본 설정
@@ -49,6 +55,16 @@ if _search_func is None:
             from crawl_youtube import search_youtube as _legacy_single_fetch  # type: ignore
         except Exception:
             _legacy_single_fetch = None
+
+def _cached_safe_search(team_name: str, max_results: int = 60) -> Tuple[list, list]:
+    key = f"{team_name}::{max_results}"
+    rec = _SEARCH_CACHE.get(key)
+    now = time.time()
+    if rec and now - rec["ts"] < SEARCH_CACHE_TTL:
+        return rec["value"]
+    val = _safe_search(team_name, max_results=max_results)
+    _SEARCH_CACHE[key] = {"ts": now, "value": val}
+    return val
 
 def _safe_search(team_name: str, max_results: int = 60):
     """
@@ -168,7 +184,7 @@ def search():
         team_key = club
         club_full = TEAM_MAP.get(club, club)
 
-    shorts, longs = _safe_search(club_full, max_results=60)
+    shorts, longs = _cached_safe_search(club_full, max_results=60)
 
     # ✅ 정제: 해시태그 제거 + 야구 신호어 필터 + LG 금칙어 제외
     shorts = _postprocess(shorts, team_key, club_full)
