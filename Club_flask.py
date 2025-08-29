@@ -4,7 +4,6 @@ from flask_cors import CORS
 import re
 import os
 import time
-import json
 from typing import Tuple
 
 _SEARCH_CACHE = {}
@@ -13,7 +12,6 @@ SEARCH_CACHE_TTL = int(os.getenv("SEARCH_CACHE_TTL", "60"))  # seconds
 app = Flask(__name__)
 CORS(app)
 
-# 팀 약어 -> 한글 팀명
 TEAM_MAP = {
     "LG": "LG 트윈스",
     "두산": "두산 베어스",
@@ -27,34 +25,7 @@ TEAM_MAP = {
     "한화": "한화 이글스",
 }
 
-# ---- 공식 채널 맵 (crawl과 동일하게 로드) ----
-def _load_official_map():
-    raw = os.getenv("OFFICIAL_CHANNELS_JSON")
-    if raw:
-        try:
-            tmp = json.loads(raw)
-            out = {}
-            for k, v in tmp.items():
-                out[k] = v if isinstance(v, list) else [v]
-            return out
-        except Exception:
-            pass
-    # 기본값(크롤러와 동일)
-    return {
-        "키움 히어로즈": ["UC_MA8-XEaVmvyayPzG66IKg"],
-        "NC 다이노스":  ["UC8_FRgynMX8wlGsU6Jh3zKg"],
-        "LG 트윈스":    ["UCL6QZZxb-HR4hCh_eFAnQWA"],
-        "롯데 자이언츠":["UCAZQZdSY5_YrziMPqXi-Zfw"],
-        "KT 위즈":     ["UCvScyjGkBUx2CJDMNAi9Twg"],
-        "삼성 라이온즈":["UCMWAku3a3h65QpLm63Jf2pw"],
-        "KIA 타이거즈":["UCKp8knO8a6tSI1oaLjfd9XA"],
-        "두산 베어스": ["UCsebzRfMhwYfjeBIxNX1brg"],
-        "SSG 랜더스": ["UCt8iRtgjVqm5rJHNl1TUojg"],
-        "한화 이글스":["UCdq4Ji3772xudYRUatdzRrg"],
-    }
-OFFICIAL_MAP = _load_official_map()
-
-# ---- 크롤러 로딩 ----
+# --- 크롤러 로딩 ---
 _search_func = None
 _legacy_single_fetch = None
 try:
@@ -98,13 +69,12 @@ def _safe_search(team_name: str, max_results: int = 60):
             pass
     return [], []
 
-# ---- 제목 정리 ----
+# --- 제목 정제 ---
 NEGATIVE_BY_TEAM = {
     "LG": ["전자","에너지솔루션","엔솔","디스플레이","u+","유플러스","생활건강","하우시스","이노텍","헬로비전","그룹","기업분석","그램","oled"],
 }
 BASEBALL_SIGNALS = ["KBO","프로야구","야구","하이라이트","경기","1군","2군","퓨처스","중계","리그",
                     "스포츠","타이거즈","트윈스","베어스","위즈","자이언츠","다이노스","라이온즈","히어로즈","랜더스"]
-
 HASHTAG_RE = re.compile(r"(?:^|\s)#\S+")
 SPACE_RE   = re.compile(r"\s{2,}")
 BAR_TRIM   = re.compile(r"(^[\s\|\-·]+|[\s\|\-·]+$)")
@@ -116,23 +86,13 @@ def _clean_title(txt: str) -> str:
     t = BAR_TRIM.sub("", t.strip())
     return t
 
-def _title_ok(v: dict, team_key: str, team_full: str) -> bool:
-    title = v.get("title") or ""
-    ch_id = (v.get("channel_id") or "").strip()
+def _title_ok(title: str, team_key: str, team_full: str) -> bool:
+    if not title: return False
     s = title.lower()
-
-    # 0) 공식 채널이면 무조건 통과
-    officials = set(OFFICIAL_MAP.get(team_full, [])) | set(OFFICIAL_MAP.get(team_key, []))
-    if ch_id and ch_id in officials:
-        return True
-
-    # 1) 팀별 금칙어(LG 전자 등)
     if team_key in NEGATIVE_BY_TEAM:
         for bad in NEGATIVE_BY_TEAM[team_key]:
             if bad.lower() in s:
                 return False
-
-    # 2) 야구/팀 신호어 중 하나라도 포함되면 통과
     if team_full.lower() in s or team_key.lower() in s:
         return True
     return any(k.lower() in s for k in BASEBALL_SIGNALS)
@@ -141,23 +101,22 @@ def _postprocess(videos, team_key: str, team_full: str):
     out = []
     for v in videos or []:
         t = _clean_title(v.get("title"))
-        item = {
+        if not _title_ok(t, team_key, team_full):
+            continue
+        out.append({
             "title": t,
             "url": v.get("url") or v.get("watch_url"),
             "thumbnail": v.get("thumbnail") or v.get("thumbnail_url"),
             "channel": v.get("channel") or v.get("channelTitle") or v.get("uploader"),
-            "channel_id": v.get("channel_id"),
-            "published_at": v.get("published_at") or v.get("publish_date"),
-            "duration": v.get("duration"),          # ISO 유지 (프런트가 변환)
+            "published_at": v.get("published_at") or v.get("publishedAt") or v.get("publish_date"),
+            "duration": v.get("duration"),
             "seconds": v.get("seconds"),
-        }
-        if _title_ok(item, team_key, team_full):
-            out.append(item)
+        })
     return out
 
+# --- 라우트 ---
 @app.get("/healthz")
-def health():
-    return "ok", 200
+def health(): return "ok", 200
 
 @app.route("/")
 @app.route("/club")
@@ -166,7 +125,7 @@ def index():
     team_name = TEAM_MAP.get(team_param, team_param)
     return render_template("Club.html", team_name=team_name, teams=TEAM_MAP)
 
-@app.route("/search", methods=["GET", "POST"])
+@app.route("/search", methods=["GET","POST"])
 def search():
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
@@ -174,43 +133,30 @@ def search():
         force = bool(data.get("force"))
     else:
         club = (request.args.get("team") or request.args.get("club") or "").strip()
-        force = bool(request.args.get("force"))
+        force = False
 
     if not club:
         return jsonify({"shorts": [], "short": [], "long": []})
 
-    # 약어→풀네임
     team_key = None
     club_full = club
     for k, full in TEAM_MAP.items():
         if club == k or club == full:
-            team_key = k
-            club_full = full
+            team_key, club_full = k, full
             break
     if not team_key:
         team_key = club
         club_full = TEAM_MAP.get(club, club)
 
-    # 캐시 무효화
     cache_key = f"{club_full}::60"
-    if force:
-        _SEARCH_CACHE.pop(cache_key, None)
+    if force: _SEARCH_CACHE.pop(cache_key, None)
 
     shorts, longs = _cached_safe_search(club_full, max_results=60)
-
     shorts = _postprocess(shorts, team_key, club_full)
     longs  = _postprocess(longs,  team_key, club_full)
 
     return jsonify({"shorts": shorts, "short": shorts, "long": longs})
 
-@app.get("/yt_status")
-def yt_status():
-    try:
-        from crawl_club import yt_self_test
-        return jsonify(yt_self_test())
-    except Exception as e:
-        return jsonify({"ok": False, "error": repr(e)}), 500
-
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
