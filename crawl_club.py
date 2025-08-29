@@ -1,230 +1,126 @@
 # crawl_club.py
-import os, re, json
+import os
+import re
 from typing import List, Dict, Any, Optional, Tuple
+
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# ==== 튜닝 파라미터 ====
-SHORT_MAX_SEC = int(os.getenv("SHORT_MAX_SEC", "75"))           # 숏폼 기준(초)
-RECENT_PER_CHANNEL = int(os.getenv("RECENT_PER_CHANNEL", "50")) # 공식/보조 채널당 최근 수집 개수
-BACKFILL_PER_QUERY = int(os.getenv("BACKFILL_PER_QUERY", "30")) # 일반 검색 쿼리별 수집 개수
+SHORT_MAX_SEC = int(os.getenv("SHORT_MAX_SEC", "75"))  # 숏폼 기준(초)
 
-# ==== 기본 공식 채널 (네가 준 값) ====
-DEFAULT_OFFICIAL = {
-    "키움 히어로즈": "UC_MA8-XEaVmvyayPzG66IKg",
-    "NC 다이노스":  "UC8_FRgynMX8wlGsU6Jh3zKg",
-    "LG 트윈스":    "UCL6QZZxb-HR4hCh_eFAnQWA",
-    "롯데 자이언츠":"UCAZQZdSY5_YrziMPqXi-Zfw",
-    "KT 위즈":     "UCvScyjGkBUx2CJDMNAi9Twg",
-    "삼성 라이온즈":"UCMWAku3a3h65QpLm63Jf2pw",
-    "KIA 타이거즈":"UCKp8knO8a6tSI1oaLjfd9XA",
-    "두산 베어스": "UCsebzRfMhwYfjeBIxNX1brg",
-    "SSG 랜더스": "UCt8iRtgjVqm5rJHNl1TUojg",
-    "한화 이글스":"UCdq4Ji3772xudYRUatdzRrg",
-}
+def _build_yt_client() -> Optional[Any]:
+    api_key = os.getenv("YT_API_KEY") or os.getenv("YOUTUBE_API_KEY")
+    if not api_key:
+        return None
+    # Render 같은 환경에선 cache_discovery=False 권장
+    return build("youtube", "v3", developerKey=api_key, cache_discovery=False)
 
-# 약어/별칭 → 정식명
-ALIASES = {
-    "LG": "LG 트윈스", "KT": "KT 위즈", "두산": "두산 베어스", "SSG": "SSG 랜더스",
-    "키움": "키움 히어로즈", "KIA": "KIA 타이거즈", "삼성": "삼성 라이온즈",
-    "NC": "NC 다이노스", "롯데": "롯데 자이언츠", "한화": "한화 이글스",
-}
+_duration_re = re.compile(
+    r"P(?:(?P<days>\d+)D)?"
+    r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?"
+)
 
-def _yt() -> Optional[Any]:
-    key = os.getenv("YT_API_KEY") or os.getenv("YOUTUBE_API_KEY")
-    return build("youtube", "v3", developerKey=key, cache_discovery=False) if key else None
+def _iso8601_to_seconds(duration: str) -> int:
+    if not duration:
+        return 0
+    m = _duration_re.fullmatch(duration)
+    if not m:
+        return 0
+    days = int(m.group("days") or 0)
+    hours = int(m.group("hours") or 0)
+    minutes = int(m.group("minutes") or 0)
+    seconds = int(m.group("seconds") or 0)
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
-def _load_official_map() -> Dict[str, List[str]]:
-    # OFFICIAL_CHANNELS_JSON 있으면 그걸 우선 사용(override)
-    raw = os.getenv("OFFICIAL_CHANNELS_JSON")
-    if raw:
-        try:
-            tmp = json.loads(raw)
-            out: Dict[str, List[str]] = {}
-            for k, v in tmp.items():
-                out[k] = v if isinstance(v, list) else [v]
-            return out
-        except Exception:
-            pass
-    # 기본값(정식명/약어 모두 키로 지원)
-    out: Dict[str, List[str]] = {}
-    for full, cid in DEFAULT_OFFICIAL.items():
-        out.setdefault(full, []).append(cid)
-    for alias, full in ALIASES.items():
-        if full in DEFAULT_OFFICIAL:
-            out.setdefault(alias, []).append(DEFAULT_OFFICIAL[full])
-    return out
-
-OFFICIAL_MAP = _load_official_map()
-
-def _resolve_team(team: str) -> str:
+def _normalize_query(team: str) -> str:
     team = (team or "").strip()
-    if not team: return ""
-    if team in DEFAULT_OFFICIAL or team in OFFICIAL_MAP: return team
-    if team in ALIASES: return ALIASES[team]
-    return team
+    if not team:
+        return ""
+    # 기본적으로 하이라이트 중심으로
+    return f"{team} 하이라이트"
 
-# 문자열 정규화 + 팀명 포함 여부
-def _norm(s: str) -> str: return re.sub(r"\s+", "", (s or "").lower())
-def _title_has_team(title: str, team: str) -> bool:
-    if not title or not team: return False
-    t = _norm(title)
-    keys = {_norm(team)}
-    for k, full in ALIASES.items():
-        if full == team: keys.add(_norm(k))
-    return any(k in t for k in keys)
-
-# ISO8601 duration → 초
-_dur_re = re.compile(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?")
-def _sec(iso: str) -> int:
-    if not iso: return 0
-    m = _dur_re.fullmatch(iso)
-    if not m: return 0
-    d, h, m_, s = (int(x or 0) for x in m.groups())
-    return d*86400 + h*3600 + m_*60 + s
-
-def _videos_by_ids(yt, ids: List[str]) -> List[Dict]:
-    out: List[Dict[str, Any]] = []
-    if not ids: return out
-    for i in range(0, len(ids), 50):
-        resp = yt.videos().list(part="snippet,contentDetails", id=",".join(ids[i:i+50]), maxResults=50).execute()
-        for it in resp.get("items", []):
-            sn, cd = it.get("snippet", {}), it.get("contentDetails", {})
-            sec = _sec(cd.get("duration"))
-            thumbs = sn.get("thumbnails") or {}
-            thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("medium") or {}).get("url") or (thumbs.get("default") or {}).get("url")
-            out.append({
-                "id": it.get("id"),
-                "title": sn.get("title"),
-                "url": f"https://www.youtube.com/watch?v={it.get('id')}",
-                "thumbnail": thumb,
-                "channelTitle": sn.get("channelTitle"),
-                "channel_id": sn.get("channelId"),
-                "publish_date": sn.get("publishedAt"),
-                "duration": cd.get("duration"),
-                "seconds": sec,
-            })
-    return out
-
-def _recent_from_channel(yt, channel_id: str, limit: int, team_filter: str = "") -> List[Dict]:
-    ids, token = [], None
-    while len(ids) < limit:
-        n = min(50, limit - len(ids))
-        resp = yt.search().list(part="id", channelId=channel_id, type="video", order="date", maxResults=n, pageToken=token).execute()
-        ids += [it["id"]["videoId"] for it in resp.get("items", []) if it.get("id", {}).get("videoId")]
-        token = resp.get("nextPageToken")
-        if not token: break
-    vids = _videos_by_ids(yt, ids)
-    return [v for v in vids if not team_filter or _title_has_team(v.get("title"), team_filter)]
-
-def _search_multi(yt, queries: List[str], per_query: int, team_filter: str) -> List[Dict]:
-    all_ids: List[str] = []
-    for q in queries:
-        token = None
-        grabbed = 0
-        while grabbed < per_query:
-            n = min(50, per_query - grabbed)
-            resp = yt.search().list(
-                part="id",
-                q=q, type="video", order="date",
-                relevanceLanguage="ko", regionCode="KR",
-                maxResults=n, pageToken=token, safeSearch="none"
-            ).execute()
-            ids = [it["id"]["videoId"] for it in resp.get("items", []) if it.get("id", {}).get("videoId")]
-            if not ids: break
-            all_ids += ids
-            grabbed += len(ids)
-            token = resp.get("nextPageToken")
-            if not token: break
-    vids = _videos_by_ids(yt, all_ids)
-    return [v for v in vids if _title_has_team(v.get("title"), team_filter)]
-
-def _dedup(items: List[Dict]) -> List[Dict]:
-    seen, out = set(), []
-    for v in items:
-        vid = v.get("id") or v.get("videoId") or v.get("url")
-        if not vid or vid in seen: continue
-        seen.add(vid); out.append(v)
-    return out
-
-def search_videos_by_team(team_name: str, max_results: int = 60) -> Tuple[List[Dict], List[Dict]]:
+def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[Dict], List[Dict]]:
     """
-    리턴: (shorts, longs)
-    1) 팀 '공식 채널' 최신 업로드 중심
-    2) KBO 등 보조 채널(환경변수 OFFICIAL_CHANNELS_JSON에 "KBO" 등 등록 시)에서 '팀명 포함' 추가
-    3) 일반 검색('팀명 하이라이트/KBO/경기 하이라이트')로 보강(제목에 팀명 필수)
+    팀 이름으로 영상을 검색하고, 길이를 조회해서 (shorts, longs) 두 리스트로 나눠 반환.
+    각 아이템: {title, url, thumbnail, channelTitle, publishedAt, duration, seconds}
     """
     team_name = (team_name or "").strip()
-    if not team_name: return [], []
-    yt = _yt()
-    if yt is None:    return [], []
+    if not team_name:
+        return [], []
 
-    resolved = _resolve_team(team_name)
+    yt = _build_yt_client()
+    if yt is None:
+        return [], []
 
-    # 1) 공식 채널
-    official_cids = OFFICIAL_MAP.get(resolved, []) + OFFICIAL_MAP.get(ALIASES.get(resolved, ""), [])
-    official_cids = [c for c in official_cids if c]
-    official: List[Dict] = []
-    for cid in official_cids:
-        try:
-            # 공식 채널은 필터 없이
-            official += _recent_from_channel(yt, cid, limit=RECENT_PER_CHANNEL, team_filter="")
-        except Exception:
-            pass
+    q = _normalize_query(team_name)
 
-    # 2) 보조 채널 (예: "KBO")
-    extras: List[Dict] = []
-    for k in ("KBO", "KBO 리그", "KBO League"):
-        for cid in OFFICIAL_MAP.get(k, []):
-            try:
-                extras += _recent_from_channel(yt, cid, limit=RECENT_PER_CHANNEL//2, team_filter=resolved)
-            except Exception:
-                pass
-
-    # 3) 일반 검색
-    queries = [
-        f"{resolved} 하이라이트",
-        f"{resolved} KBO",
-        f"{resolved} 경기 하이라이트",
-    ]
-    backfill = []
     try:
-        backfill = _search_multi(yt, queries, BACKFILL_PER_QUERY, team_filter=resolved)
+        # 1) search로 비디오 id 모으기
+        search_resp = (
+            yt.search()
+            .list(
+                part="snippet",
+                q=q,
+                type="video",
+                maxResults=max(1, min(max_results, 50)),
+                order="date",
+                safeSearch="none",
+            )
+            .execute()
+        )
     except HttpError:
-        backfill = []
+        return [], []
     except Exception:
-        backfill = []
+        return [], []
 
-    merged = _dedup(official + extras + backfill)
-    merged.sort(key=lambda v: (v.get("publish_date") or ""), reverse=True)
+    items = search_resp.get("items", [])
+    if not items:
+        return [], []
 
-    shorts = [v for v in merged if (v.get("seconds") or 0) <= SHORT_MAX_SEC]
-    longs  = [v for v in merged if (v.get("seconds") or 0) >  SHORT_MAX_SEC]
+    # id 목록
+    ids = []
+    base_map: Dict[str, Dict[str, Any]] = {}
+    for it in items:
+        vid = (it.get("id") or {}).get("videoId")
+        if not vid:
+            continue
+        sn = it.get("snippet", {})
+        thumbs = sn.get("thumbnails") or {}
+        thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
+        base_map[vid] = {
+            "title": sn.get("title"),
+            "thumbnail": thumb,
+            "channelTitle": sn.get("channelTitle"),
+            "publishedAt": sn.get("publishedAt"),
+            "url": f"https://www.youtube.com/watch?v={vid}",
+        }
+        ids.append(vid)
 
-    if max_results and max_results > 0:
-        shorts = shorts[:max_results]
-        longs  = longs[:max_results]
+    # 2) videos.list로 길이 가져오기
+    shorts, longs = [], []
+    try:
+        detail_resp = (
+            yt.videos()
+            .list(part="contentDetails", id=",".join(ids))
+            .execute()
+        )
+        for v in detail_resp.get("items", []):
+            vid = v.get("id")
+            dur_iso = (v.get("contentDetails") or {}).get("duration")
+            secs = _iso8601_to_seconds(dur_iso)
+            data = {**base_map.get(vid, {}), "duration": dur_iso, "seconds": secs}
+            if secs <= SHORT_MAX_SEC:
+                shorts.append(data)
+            else:
+                longs.append(data)
+    except Exception:
+        # 길이 조회 실패 시 전부 롱폼으로 처리
+        longs = list(base_map.values())
+
     return shorts, longs
 
-# 구버전 호환 (롱폼만)
+# 구버전 호환
 def get_youtube_videos(team_name: str, max_results: int = 60) -> List[Dict]:
     _, longs = search_videos_by_team(team_name, max_results=max_results)
     return longs
 
-def yt_self_test():
-    yt = _yt()
-    if yt is None:
-        return {"ok": False, "where": "build", "error": "NO_API_KEY"}
-    try:
-        r = yt.search().list(part="id", q="KBO", type="video", maxResults=1).execute()
-        return {"ok": True, "items": len(r.get("items", []))}
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        try:
-            status = getattr(getattr(e, "resp", None), "status", None)
-            msg = getattr(e, "content", b"")
-            msg = msg.decode("utf-8", "ignore") if isinstance(msg, (bytes, bytearray)) else str(msg)
-        except Exception:
-            status, msg = None, repr(e)
-        return {"ok": False, "where": "http", "status": status, "message": msg[:300]}
