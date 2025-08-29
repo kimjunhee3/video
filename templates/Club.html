@@ -5,83 +5,69 @@
   <title>야구 구단 유튜브 영상</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: 'Malgun Gothic', Arial, sans-serif; margin: 0; background: transparent; overflow-x: hidden; overflow-y: auto; }
-    * { scrollbar-width: none; -ms-overflow-style: none; }
-    *::-webkit-scrollbar { display: none; }
+    /* ===== 크기/간격을 한 곳에서 조절 ===== */
+    :root{
+      --wrap: 1120px;   /* 전체 영역 폭 (5열이 딱 맞게) */
+      --gap: 16px;      /* 카드 간격 */
+      --radius: 12px;   /* 카드 둥근모서리 */
+      --title: 13px;    /* 제목 폰트 크기 */
+      --pad-x: 16px;    /* 좌우 패딩 */
+    }
 
-    .wrap { max-width: 1200px; margin: 20px auto 40px; padding: 0 24px; }
-    h1 { color: #2c3e50; font-size: 1.9rem; margin: 10px 0 14px; font-weight: 800; letter-spacing: -0.5px; text-align: center; }
+    body{ font-family:'Malgun Gothic', Arial, sans-serif; margin:0; background:transparent; overflow-x:hidden; overflow-y:auto; }
+    *{ scrollbar-width:none; -ms-overflow-style:none; }
+    *::-webkit-scrollbar{ display:none; }
+
+    .wrap{ max-width:var(--wrap); margin:20px auto 40px; padding:0 var(--pad-x); }
+    h1{ color:#2c3e50; font-size:1.9rem; margin:10px 0 14px; font-weight:800; letter-spacing:-0.5px; text-align:center; }
 
     /* 팀 선택 바 */
-    .teams-bar { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin: 8px 0 24px; }
-    .team-btn {
+    .teams-bar{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin:8px 0 24px; }
+    .team-btn{
       appearance:none; border:1px solid #d7dbe8; background:#f4f7fb; color:#1a73e8;
-      padding:8px 12px; border-radius:12px; font-weight:700; cursor:pointer;
+      padding:8px 12px; border-radius:12px; font-weight:700; cursor:pointer; text-decoration:none;
     }
-    .team-btn:hover { background:#e8f0fe; }
-    .team-btn.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
+    .team-btn:hover{ background:#e8f0fe; }
+    .team-btn.active{ background:#1a73e8; color:#fff; border-color:#1a73e8; }
 
-    .section { margin-top: 26px; }
-    .section-head { 
-  display:flex; 
-  align-items:center; 
-  gap:8px;          /* 제목과 화살표 간격 */
-  margin: 10px 0 12px; 
-}
+    .section{ margin-top:26px; }
+    .section-head{ display:flex; align-items:center; gap:8px; margin:10px 0 12px; }
+    .section-head h2{ font-size:1.3rem; font-weight:800; color:#1a73e8; margin:0; }
+    .arrows{ display:flex; gap:6px; }
+    .arrow-btn{ background:none; border:none; font-size:24px; color:#1a73e8; cursor:pointer; padding:2px 6px; border-radius:6px; }
+    .arrow-btn:hover{ background:#e8f0fe; }
 
-.section-head h2 { 
-  font-size: 1.3rem; 
-  font-weight: 800; 
-  color:#1a73e8; 
-  margin: 0; 
-}
-
-.arrows { 
-  display:flex; 
-  gap:6px; 
-} 
-    .arrow-btn { background: none; border: none; font-size: 24px; color: #1a73e8; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
-    .arrow-btn:hover { background:#e8f0fe; }
-
-    .grid { display:grid; grid-template-columns: repeat(5, 1fr); gap: 24px; }
-    @media (max-width: 980px) { .grid { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 640px) { .grid { grid-template-columns: repeat(2, 1fr); } }
-
-    .card { background:#fff; border-radius:16px; box-shadow:0 2px 8px #0002; border:1.5px solid #f0f1f6; overflow:hidden; transition:.2s box-shadow,.2s transform,.2s border-color; }
-    .card:hover { box-shadow:0 8px 24px #0003; transform: translateY(-4px) scale(1.02); border-color:#1a73e8; }
-    .thumb { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; }
-
-    /* ✅ 제목 전체 표시 (줄자르기 제거) */
-    .title {
-      font-size: 15px; font-weight: 600; color:#222; text-align: left;
-      padding: 10px 12px 12px; line-height: 1.42;
-      white-space: normal; overflow: visible; display:block;
+    /* ▶ 데스크톱: 정확히 5열 고정 */
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: var(--gap);
     }
 
-    .center { text-align:center; color:#8a8fa0; padding:18px 0; }
-    .hidden { display:none; }
 
+    .card{
+      background:#fff; border-radius:var(--radius);
+      box-shadow:0 2px 8px #0002; border:1px solid #f0f1f6; overflow:hidden;
+      transition:.2s box-shadow,.2s transform,.2s border-color; text-decoration:none; color:inherit; display:block;
+    }
+    .card:hover{ box-shadow:0 8px 24px #0003; transform:translateY(-4px) scale(1.02); border-color:#1a73e8; }
+    .thumb{ width:100%; aspect-ratio:16/9; object-fit:cover; display:block; }
 
-    a { text-decoration: none; color: inherit; }
-    .card { text-decoration: none; color: inherit; }
-    .card:link, .card:visited, .card:hover, .card:active {
-      text-decoration: none; color: inherit;
+    .title{
+      font-size:var(--title); font-weight:600; color:#222; text-align:left;
+      padding:8px 10px 10px; line-height:1.35;
+      white-space:normal; overflow:visible; display:block; text-decoration:none;
     }
 
-    .title { 
-      font-size: 15px; font-weight: 600; color:#222; text-align:left;
-      padding:10px 12px 12px; line-height:1.42;
-      white-space: normal; overflow: visible; display:block;
-      text-decoration: none;
-    }
-    
+    .center{ text-align:center; color:#8a8fa0; padding:18px 0; }
+    .hidden{ display:none; }
   </style>
 </head>
 <body>
 <div class="wrap">
   <h1>{{ team_name }}</h1>
 
-  <!-- 팀 선택: 버튼 클릭 → /club?team=약어 -->
+  <!-- 팀 선택 -->
   <div class="teams-bar">
     {% for short, full in teams.items() %}
       <a class="team-btn {{ 'active' if (team_name == full or team_name == short) else '' }}"
@@ -117,20 +103,24 @@
 </div>
 
 <script>
-  const PAGE = 5;
+  const PAGE = 5;       // 한 페이지 5개
   let S=[], L=[], sp=0, lp=0;
 
-  // URL ?team= 값으로 /search 호출
   async function loadData() {
     const q = new URLSearchParams(location.search);
-    // 약어를 한글 팀명으로 바꾸는 건 서버에서 처리하니 그대로 전달
     const team = q.get('team') || 'LG';
     const body = { club: team };
-    const res  = await fetch('/search', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+
+    const res  = await fetch('/search', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
     const data = await res.json();
     S = data.short || [];
     L = data.long  || [];
     sp = lp = 0;
+
     renderSection('short', S, sp);
     renderSection('long',  L, lp);
     document.getElementById('empty').classList.toggle('hidden', (S.length+L.length) > 0);
@@ -143,9 +133,9 @@
   }
 
   function renderSection(kind, list, page){
-    const grid = document.getElementById(kind==='short'?'short-grid':'long-grid');
-    const prev = document.getElementById(kind==='short'?'short-prev':'long-prev');
-    const next = document.getElementById(kind==='short'?'short-next':'long-next');
+    const grid = document.getElementById(kind==='short' ? 'short-grid' : 'long-grid');
+    const prev = document.getElementById(kind==='short' ? 'short-prev' : 'long-prev');
+    const next = document.getElementById(kind==='short' ? 'short-next' : 'long-next');
 
     const start = page*PAGE, end = start+PAGE;
     grid.innerHTML = list.slice(start,end).map(cardHTML).join('');
@@ -153,8 +143,18 @@
     prev.classList.toggle('hidden', page<=0);
     next.classList.toggle('hidden', end>=list.length);
 
-    prev.onclick = ()=>{ if(page>0){ if(kind==='short'){sp--;renderSection('short',S,sp);} else {lp--;renderSection('long',L,lp);} } };
-    next.onclick = ()=>{ if(end<list.length){ if(kind==='short'){sp++;renderSection('short',S,sp);} else {lp++;renderSection('long',L,lp);} } };
+    prev.onclick = () => {
+      if(page>0){
+        if(kind==='short'){ sp--; renderSection('short', S, sp); }
+        else              { lp--; renderSection('long',  L, lp); }
+      }
+    };
+    next.onclick = () => {
+      if(end<list.length){
+        if(kind==='short'){ sp++; renderSection('short', S, sp); }
+        else              { lp++; renderSection('long',  L, lp); }
+      }
+    };
   }
 
   loadData();
