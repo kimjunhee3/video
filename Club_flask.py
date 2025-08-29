@@ -134,6 +134,17 @@ def _title_ok(title: str, team_key: str, team_full: str) -> bool:
         return True
     return any(k.lower() in s for k in BASEBALL_SIGNALS)
 
+def _fmt_duration(sec):
+    try:
+        s = int(sec or 0)
+    except Exception:
+        return None
+    if s <= 0:
+        return None
+    m, s = divmod(s, 60)
+    h, m = divmod(m, 60)
+    return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:d}:{s:02d}"
+
 def _postprocess(videos, team_key: str, team_full: str):
     out = []
     for v in videos or []:
@@ -142,14 +153,14 @@ def _postprocess(videos, team_key: str, team_full: str):
             continue
         out.append({
             "title": t,
-            "url": v.get("url"),
-            "thumbnail": v.get("thumbnail"),
-            "channelTitle": v.get("channelTitle"),
-            "seconds": v.get("seconds"),
+            "url": v.get("url") or v.get("watch_url"),
+            "thumbnail": v.get("thumbnail") or v.get("thumbnail_url"),
+            # 프런트가 기대하는 키로 정규화
+            "channel": v.get("channel") or v.get("channelTitle") or v.get("uploader"),
+            "published_at": v.get("published_at") or v.get("publish_date"),
+            "duration": v.get("duration") or _fmt_duration(v.get("seconds")),
         })
     return out
-
-
 # ---------------------------
 # 4) 라우트
 # ---------------------------
@@ -165,13 +176,19 @@ def index():
     team_name = TEAM_MAP.get(team_param, team_param)  # 약어면 한글로, 이미 한글이면 그대로
     return render_template("Club.html", team_name=team_name, teams=TEAM_MAP)
 
-@app.post("/search")
+@app.route("/search", methods=["GET", "POST"])
 def search():
-    data = request.get_json(silent=True) or {}
-    club = (data.get("club") or "").strip()
-    if not club:
-        return jsonify({"short": [], "long": []})
+    ...
+    shorts, longs = _cached_safe_search(club_full, max_results=60)
+    shorts = _postprocess(shorts, team_key, club_full)
+    longs  = _postprocess(longs,  team_key, club_full)
 
+    # 호환: shorts(권장) + short(구버전 프런트)
+    return jsonify({
+        "shorts": shorts,
+        "short": shorts,
+        "long": longs
+    })
     # 약어 → 한글 풀네임
     team_key = None
     for k, full in TEAM_MAP.items():
