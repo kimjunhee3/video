@@ -206,6 +206,10 @@ def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[D
         else:
             longs.append(v)
 
+    if not videos:
+    videos += _collect_by_search(yt, team_name, max_results=max_results)  # 최후 보강
+
+
     return shorts, longs
 
 
