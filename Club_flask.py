@@ -178,28 +178,43 @@ def index():
 
 @app.route("/search", methods=["GET", "POST"])
 def search():
-    ...
-    shorts, longs = _cached_safe_search(club_full, max_results=60)
-    shorts = _postprocess(shorts, team_key, club_full)
-    longs  = _postprocess(longs,  team_key, club_full)
+    # 입력 파싱 (POST JSON 우선, 없으면 GET 쿼리)
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        club = (data.get("club") or "").strip()
+        force = bool(data.get("force"))
+    else:
+        club = (request.args.get("team") or request.args.get("club") or "").strip()
+        force = False
 
-    # 호환: shorts(권장) + short(구버전 프런트)
-    return jsonify({
-        "shorts": shorts,
-        "short": shorts,
-        "long": longs
-    })
-    # 약어 → 한글 풀네임
+    if not club:
+        return jsonify({"shorts": [], "short": [], "long": []})
+
+    # 약어 -> 풀네임 매핑
     team_key = None
+    club_full = club
     for k, full in TEAM_MAP.items():
         if club == k or club == full:
             team_key = k
             club_full = full
             break
     if not team_key:
-        # 모르면 그대로 사용
         team_key = club
         club_full = TEAM_MAP.get(club, club)
+
+    # 강제 갱신 요청 처리
+    cache_key = f"{club_full}::60"
+    if force:
+        _SEARCH_CACHE.pop(cache_key, None)
+
+    # 실제 검색(캐시 적용)
+    shorts, longs = _cached_safe_search(club_full, max_results=60)
+
+    # 후처리(정제)
+    shorts = _postprocess(shorts, team_key, club_full)
+    longs  = _postprocess(longs,  team_key, club_full)
+
+    return jsonify({"shorts": shorts, "short": shorts, "long": longs})
 
     shorts, longs = _cached_safe_search(club_full, max_results=60)
 
