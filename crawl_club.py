@@ -8,24 +8,11 @@ from googleapiclient.errors import HttpError
 
 SHORT_MAX_SEC = int(os.getenv("SHORT_MAX_SEC", "75"))  # 숏폼 기준(초)
 
-# 구단별 공식 유튜브 채널 ID (네가 준 값)
-club_youtube_channels = {
-    "키움 히어로즈": "UC_MA8-XEaVmvyayPzG66IKg",
-    "NC 다이노스":  "UC8_FRgynMX8wlGsU6Jh3zKg",
-    "LG 트윈스":    "UCL6QZZxb-HR4hCh_eFAnQWA",
-    "롯데 자이언츠":"UCAZQZdSY5_YrziMPqXi-Zfw",
-    "KT 위즈":     "UCvScyjGkBUx2CJDMNAi9Twg",
-    "삼성 라이온즈":"UCMWAku3a3h65QpLm63Jf2pw",
-    "KIA 타이거즈":"UCKp8knO8a6tSI1oaLjfd9XA",
-    "두산 베어스": "UCsebzRfMhwYfjeBIxNX1brg",
-    "SSG 랜더스": "UCt8iRtgjVqm5rJHNl1TUojg",
-    "한화 이글스":"UCdq4Ji3772xudYRUatdzRrg",
-}
-
 def _build_yt_client() -> Optional[Any]:
     api_key = os.getenv("YT_API_KEY") or os.getenv("YOUTUBE_API_KEY")
     if not api_key:
         return None
+    # Render 같은 환경에선 cache_discovery=False 권장
     return build("youtube", "v3", developerKey=api_key, cache_discovery=False)
 
 _duration_re = re.compile(
@@ -49,133 +36,13 @@ def _normalize_query(team: str) -> str:
     team = (team or "").strip()
     if not team:
         return ""
+    # 기본적으로 하이라이트 중심으로
     return f"{team} 하이라이트"
-
-# === 기존 _collect_from_channel 함수 통째로 교체 ===
-def _collect_from_channel(yt, channel_id: str, max_results: int) -> List[Dict[str, Any]]:
-    """
-    공식 채널의 '업로드' 플레이리스트에서 최신 영상 가져오기 (가장 안정적)
-    1) channels.list -> uploads playlistId 획득
-    2) playlistItems.list -> videoId 목록
-    3) videos.list -> duration 등 상세
-    """
-    if not channel_id:
-        return []
-
-    try:
-        ch = yt.channels().list(
-            part="contentDetails", id=channel_id
-        ).execute()
-        items = ch.get("items", [])
-        if not items:
-            return []
-        uploads_pid = (items[0].get("contentDetails") or {}).get("relatedPlaylists", {}).get("uploads")
-        if not uploads_pid:
-            return []
-    except Exception as e:
-        print("[YT] channels.list error:", repr(e), flush=True)
-        return []
-
-    # 업로드 플레이리스트에서 최신 videoId 모으기
-    try:
-        pl = yt.playlistItems().list(
-            part="contentDetails,snippet",
-            playlistId=uploads_pid,
-            maxResults=min(max_results, 50)
-        ).execute()
-    except Exception as e:
-        print("[YT] playlistItems.list error:", repr(e), flush=True)
-        return []
-
-    vids: List[str] = []
-    base: Dict[str, Dict[str, Any]] = {}
-    for it in pl.get("items", []):
-        cd = it.get("contentDetails", {})
-        vid = cd.get("videoId")
-        if not vid:
-            continue
-        sn = it.get("snippet", {}) or {}
-        thumbs = sn.get("thumbnails") or {}
-        thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
-        base[vid] = {
-            "title": sn.get("title"),
-            "thumbnail": thumb,
-            "channelTitle": sn.get("channelTitle"),
-            "publishedAt": sn.get("publishedAt"),
-            "url": f"https://www.youtube.com/watch?v={vid}",
-        }
-        vids.append(vid)
-
-    if not vids:
-        return []
-
-    # 길이/포맷 정보 붙이기
-    out: List[Dict[str, Any]] = []
-    try:
-        detail = yt.videos().list(part="contentDetails", id=",".join(vids)).execute()
-        for v in detail.get("items", []):
-            vid = v.get("id")
-            dur_iso = (v.get("contentDetails") or {}).get("duration")
-            secs = _iso8601_to_seconds(dur_iso)
-            out.append({**base.get(vid, {}), "duration": dur_iso, "seconds": secs})
-    except Exception as e:
-        print("[YT] videos.list error:", repr(e), flush=True)
-        # 실패해도 썸네일/제목만이라도 리턴
-        out = list(base.values())
-
-    return out
-
-
-def _collect_by_search(yt, q: str, max_results: int) -> List[Dict[str, Any]]:
-    """일반 검색으로 보강 (강화 전 방식)"""
-    try:
-        resp = yt.search().list(
-            part="snippet",
-            q=q,
-            type="video",
-            order="date",
-            maxResults=min(max_results, 50),
-            safeSearch="none",
-        ).execute()
-    except Exception:
-        return []
-
-    ids: List[str] = []
-    base: Dict[str, Dict[str, Any]] = {}
-    for it in resp.get("items", []):
-        vid = (it.get("id") or {}).get("videoId")
-        if not vid:
-            continue
-        sn = it.get("snippet", {})
-        thumbs = sn.get("thumbnails") or {}
-        thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
-        base[vid] = {
-            "title": sn.get("title"),
-            "thumbnail": thumb,
-            "channelTitle": sn.get("channelTitle"),
-            "publishedAt": sn.get("publishedAt"),
-            "url": f"https://www.youtube.com/watch?v={vid}",
-        }
-        ids.append(vid)
-
-    # 길이 붙이기
-    try:
-        detail = yt.videos().list(part="contentDetails", id=",".join(ids)).execute()
-        out: List[Dict[str, Any]] = []
-        for v in detail.get("items", []):
-            vid = v.get("id")
-            dur_iso = (v.get("contentDetails") or {}).get("duration")
-            secs = _iso8601_to_seconds(dur_iso)
-            out.append({**base.get(vid, {}), "duration": dur_iso, "seconds": secs})
-        return out
-    except Exception:
-        return list(base.values())
 
 def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[Dict], List[Dict]]:
     """
-    1) 구단 공식 채널에서 최근 업로드 우선 수집
-    2) 부족하면 '팀명 하이라이트' 일반 검색으로 보강
-    3) 길이로 숏/롱 분리
+    팀 이름으로 영상을 검색하고, 길이를 조회해서 (shorts, longs) 두 리스트로 나눠 반환.
+    각 아이템: {title, videoId, thumbnail, channelTitle, publishedAt, url, duration, seconds}
     """
     team_name = (team_name or "").strip()
     if not team_name:
@@ -185,54 +52,70 @@ def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[D
     if yt is None:
         return [], []
 
-    videos: List[Dict[str, Any]] = []
+    q = _normalize_query(team_name)
 
-    # 공식 채널 우선
-    ch_id = club_youtube_channels.get(team_name)
-    if ch_id:
-        videos += _collect_from_channel(yt, ch_id, max_results=max_results)
+    try:
+        # 1) search로 비디오 id 모으기
+        search_resp = (
+            yt.search()
+            .list(
+                part="snippet",
+                q=q,
+                type="video",
+                maxResults=max(1, min(max_results, 50)),
+                order="date",
+                safeSearch="none",
+            )
+            .execute()
+        )
+    except HttpError:
+        return [], []
+    except Exception:
+        return [], []
 
-    # 그래도 부족하면 일반 검색 폴백
-    if len(videos) < max_results:
-        q = _normalize_query(team_name)
-        videos += _collect_by_search(yt, q, max_results=max_results - len(videos))
+    items = search_resp.get("items", [])
+    if not items:
+        return [], []
 
-    # 길이 기준으로 분리
+    # id 목록
+    ids = []
+    base_map: Dict[str, Dict[str, Any]] = {}
+    for it in items:
+        vid = (it.get("id") or {}).get("videoId")
+        if not vid:
+            continue
+        sn = it.get("snippet", {})
+        thumbs = sn.get("thumbnails") or {}
+        thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
+        base_map[vid] = {
+            "title": sn.get("title"),
+            "videoId": vid,
+            "thumbnail": thumb,
+            "channelTitle": sn.get("channelTitle"),
+            "publishedAt": sn.get("publishedAt"),
+            "url": f"https://www.youtube.com/watch?v={vid}",
+        }
+        ids.append(vid)
+
+    # 2) videos.list로 길이 가져오기
     shorts, longs = [], []
-    for v in videos:
-        secs = int(v.get("seconds") or 0)
-        if secs and secs <= SHORT_MAX_SEC:
-            shorts.append(v)
-        else:
-            longs.append(v)
-
-    if not videos:
-    videos += _collect_by_search(yt, team_name, max_results=max_results)  # 최후 보강
-
+    try:
+        detail_resp = (
+            yt.videos()
+            .list(part="contentDetails", id=",".join(ids))
+            .execute()
+        )
+        for v in detail_resp.get("items", []):
+            vid = v.get("id")
+            dur_iso = (v.get("contentDetails") or {}).get("duration")
+            secs = _iso8601_to_seconds(dur_iso)
+            data = {**base_map.get(vid, {}), "duration": dur_iso, "seconds": secs}
+            if secs <= SHORT_MAX_SEC:
+                shorts.append(data)
+            else:
+                longs.append(data)
+    except Exception:
+        # 길이 조회 실패 시 전부 롱폼으로 처리
+        longs = list(base_map.values())
 
     return shorts, longs
-
-
-def yt_self_test():
-    yt = _build_yt_client()
-    if yt is None:
-        return {"ok": False, "where": "build", "error": "NO_API_KEY"}
-    try:
-        r = yt.search().list(part="id", q="KBO", type="video", maxResults=1).execute()
-        return {"ok": True, "items": len(r.get("items", []))}
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        status = getattr(getattr(e, "resp", None), "status", None)
-        msg = getattr(e, "content", b"")
-        if isinstance(msg, (bytes, bytearray)):
-            try:
-                msg = msg.decode("utf-8", "ignore")
-            except Exception:
-                msg = str(msg)
-        return {"ok": False, "where": "http", "status": status, "message": str(msg)[:300]}
-
-# (구버전 호환) 롱폼만
-def get_youtube_videos(team_name: str, max_results: int = 60) -> List[Dict]:
-    _, longs = search_videos_by_team(team_name, max_results=max_results)
-    return longs
