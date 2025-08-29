@@ -203,5 +203,14 @@ def search():
 
     return jsonify({"shorts": shorts, "short": shorts, "long": longs})
 
+@app.get("/yt_status")
+def yt_status():
+    try:
+        from crawl_club import yt_self_test
+        return jsonify(yt_self_test())
+    except Exception as e:
+        return jsonify({"ok": False, "error": repr(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
