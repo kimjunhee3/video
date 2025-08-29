@@ -51,50 +51,80 @@ def _normalize_query(team: str) -> str:
         return ""
     return f"{team} 하이라이트"
 
+# === 기존 _collect_from_channel 함수 통째로 교체 ===
 def _collect_from_channel(yt, channel_id: str, max_results: int) -> List[Dict[str, Any]]:
-    """공식 채널에서 최신 업로드 가져오기 (snippet + duration)"""
+    """
+    공식 채널의 '업로드' 플레이리스트에서 최신 영상 가져오기 (가장 안정적)
+    1) channels.list -> uploads playlistId 획득
+    2) playlistItems.list -> videoId 목록
+    3) videos.list -> duration 등 상세
+    """
     if not channel_id:
         return []
+
     try:
-        # 1) 채널 최신 업로드 videoId 수집
-        search = yt.search().list(
-            part="id",
-            channelId=channel_id,
-            type="video",
-            order="date",
-            maxResults=min(max_results, 50),
-            safeSearch="none",
+        ch = yt.channels().list(
+            part="contentDetails", id=channel_id
         ).execute()
-    except Exception:
+        items = ch.get("items", [])
+        if not items:
+            return []
+        uploads_pid = (items[0].get("contentDetails") or {}).get("relatedPlaylists", {}).get("uploads")
+        if not uploads_pid:
+            return []
+    except Exception as e:
+        print("[YT] channels.list error:", repr(e), flush=True)
         return []
 
-    ids: List[str] = [it["id"]["videoId"] for it in search.get("items", []) if it.get("id", {}).get("videoId")]
-    if not ids:
+    # 업로드 플레이리스트에서 최신 videoId 모으기
+    try:
+        pl = yt.playlistItems().list(
+            part="contentDetails,snippet",
+            playlistId=uploads_pid,
+            maxResults=min(max_results, 50)
+        ).execute()
+    except Exception as e:
+        print("[YT] playlistItems.list error:", repr(e), flush=True)
         return []
 
-    # 2) videos.list 로 snippet + contentDetails
+    vids: List[str] = []
+    base: Dict[str, Dict[str, Any]] = {}
+    for it in pl.get("items", []):
+        cd = it.get("contentDetails", {})
+        vid = cd.get("videoId")
+        if not vid:
+            continue
+        sn = it.get("snippet", {}) or {}
+        thumbs = sn.get("thumbnails") or {}
+        thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
+        base[vid] = {
+            "title": sn.get("title"),
+            "thumbnail": thumb,
+            "channelTitle": sn.get("channelTitle"),
+            "publishedAt": sn.get("publishedAt"),
+            "url": f"https://www.youtube.com/watch?v={vid}",
+        }
+        vids.append(vid)
+
+    if not vids:
+        return []
+
+    # 길이/포맷 정보 붙이기
     out: List[Dict[str, Any]] = []
     try:
-        detail = yt.videos().list(part="snippet,contentDetails", id=",".join(ids)).execute()
+        detail = yt.videos().list(part="contentDetails", id=",".join(vids)).execute()
         for v in detail.get("items", []):
-            sn = v.get("snippet", {})
-            cd = v.get("contentDetails", {})
-            thumbs = sn.get("thumbnails") or {}
-            thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
-            dur_iso = cd.get("duration")
-            out.append({
-                "title": sn.get("title"),
-                "thumbnail": thumb,
-                "channelTitle": sn.get("channelTitle"),
-                "publishedAt": sn.get("publishedAt"),
-                "url": f"https://www.youtube.com/watch?v={v.get('id')}",
-                "duration": dur_iso,
-                "seconds": _iso8601_to_seconds(dur_iso),
-            })
-    except Exception:
-        # snippet만으로 최소한 채워주고, 길이 모르면 롱폼 취급은 Flask에서 처리
-        pass
+            vid = v.get("id")
+            dur_iso = (v.get("contentDetails") or {}).get("duration")
+            secs = _iso8601_to_seconds(dur_iso)
+            out.append({**base.get(vid, {}), "duration": dur_iso, "seconds": secs})
+    except Exception as e:
+        print("[YT] videos.list error:", repr(e), flush=True)
+        # 실패해도 썸네일/제목만이라도 리턴
+        out = list(base.values())
+
     return out
+
 
 def _collect_by_search(yt, q: str, max_results: int) -> List[Dict[str, Any]]:
     """일반 검색으로 보강 (강화 전 방식)"""
