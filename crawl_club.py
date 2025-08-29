@@ -211,3 +211,20 @@ def get_youtube_videos(team_name: str, max_results: int = 60) -> List[Dict]:
     _, longs = search_videos_by_team(team_name, max_results=max_results)
     return longs
 
+def yt_self_test():
+    yt = _yt()
+    if yt is None:
+        return {"ok": False, "where": "build", "error": "NO_API_KEY"}
+    try:
+        r = yt.search().list(part="id", q="KBO", type="video", maxResults=1).execute()
+        return {"ok": True, "items": len(r.get("items", []))}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            status = getattr(getattr(e, "resp", None), "status", None)
+            msg = getattr(e, "content", b"")
+            msg = msg.decode("utf-8", "ignore") if isinstance(msg, (bytes, bytearray)) else str(msg)
+        except Exception:
+            status, msg = None, repr(e)
+        return {"ok": False, "where": "http", "status": status, "message": msg[:300]}
