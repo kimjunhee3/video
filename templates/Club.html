@@ -5,20 +5,10 @@
   <title>야구 구단 유튜브 영상</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root{
-      --primary:#1f4ed8;
-      --muted:#6b7280;
-      --panel:#ffffff;
-      --shadow:0 8px 24px rgba(0,0,0,.10);
-      --radius:18px;
-      --gap:18px;
-    }
+    :root{ --primary:#1f4ed8; --muted:#6b7280; --shadow:0 8px 24px rgba(0,0,0,.10); --radius:18px; --gap:18px; }
     *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0; background:#f5f7fb; color:#111827;
-      font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",Arial,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-    }
+    body{ margin:0; background:#f5f7fb; color:#111827;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",Arial,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;}
     .wrap{max-width:1200px; margin:32px auto; padding:0 16px}
     .card{background:#fff; border-radius:24px; box-shadow:var(--shadow); padding:28px}
     h1{margin:0 0 16px; font-size:34px; font-weight:800; letter-spacing:-.4px}
@@ -27,22 +17,26 @@
     .teams{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin:12px 0 4px}
     @media (max-width:900px){ .teams{grid-template-columns:repeat(3,minmax(0,1fr));} }
     @media (max-width:560px){ .teams{grid-template-columns:repeat(2,minmax(0,1fr));} }
-    .team-btn{
-      border:1px solid #e5e7eb; background:#fff; border-radius:14px; padding:12px 14px;
-      font-weight:800; letter-spacing:-.2px; cursor:pointer; text-align:center;
-      transition:all .12s ease; user-select:none;
-    }
+    .team-btn{border:1px solid #e5e7eb; background:#fff; border-radius:14px; padding:12px 14px;
+      font-weight:800; letter-spacing:-.2px; cursor:pointer; text-align:center; transition:all .12s ease; user-select:none;}
     .team-btn:hover{ border-color:#c7d2fe; box-shadow:0 6px 16px rgba(31,78,216,.10) }
     .team-btn.active{ background:#eef2ff; border-color:#c7d2fe; color:#1e3a8a }
 
     /* 섹션 */
     .sect{margin-top:28px}
     .sect-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
+    .left{display:flex; align-items:center; gap:10px}
     .title{font-weight:900; font-size:20px; letter-spacing:-.2px}
-    .count{color:var(--muted); font-weight:600}
+    .count{color:#6b7280; font-weight:600}
+
+    /* 페이저(제목 오른쪽) */
+    .pager{display:flex; gap:8px; align-items:center}
+    .arrow{border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:6px 9px; cursor:pointer; font-weight:800}
+    .arrow:disabled{opacity:.5; cursor:not-allowed}
+    .page-indicator{color:#374151; font-weight:700; font-size:14px; min-width:48px; text-align:center}
 
     /* 캐러셀 */
-    .carousel{position:relative; background:#fff; border:1px solid #eef2f7; border-radius:var(--radius); padding:14px; }
+    .carousel{position:relative; background:#fff; border:1px solid #eef2f7; border-radius:var(--radius); padding:14px;}
     .viewport{overflow:hidden}
     .track{display:grid; grid-auto-flow:column; grid-auto-columns:calc(20% - 12px); gap:12px; transition:transform .35s ease}
     @media (max-width:1100px){ .track{grid-auto-columns:calc(25% - 12px);} }
@@ -50,29 +44,20 @@
     @media (max-width:680px){  .track{grid-auto-columns:calc(50% - 12px);} }
     @media (max-width:520px){  .track{grid-auto-columns:100%;} }
 
-    .nav{ display:flex; gap:8px; align-items:center; }
-    .pager{display:flex; gap:8px; align-items:center}
-    .arrow{ border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:8px 10px; cursor:pointer; font-weight:800; }
-    .arrow:disabled{opacity:.5; cursor:not-allowed}
-    .page-indicator{color:#374151; font-weight:700; font-size:14px}
-
     /* 카드 */
-    .video{
-      background:#fff; border-radius:16px; box-shadow:0 6px 16px rgba(0,0,0,.08);
-      overflow:hidden; border:1px solid #eef2f7; display:flex; flex-direction:column;
-    }
+    .video{background:#fff; border-radius:16px; box-shadow:0 6px 16px rgba(0,0,0,.08); overflow:hidden; border:1px solid #eef2f7; display:flex; flex-direction:column}
     .thumb{position:relative; aspect-ratio:16/9; background:#e5e7eb}
     .thumb img{width:100%; height:100%; object-fit:cover; display:block}
-    .badge{position:absolute; left:10px; bottom:10px; padding:6px 10px; border-radius:999px;
-      background:rgba(0,0,0,.78); color:#fff; font-size:12.5px; font-weight:700; border:1px solid rgba(255,255,255,.18)}
+    .badge{position:absolute; left:10px; bottom:10px; padding:6px 10px; border-radius:999px; background:rgba(0,0,0,.78); color:#fff; font-size:12.5px; font-weight:700; border:1px solid rgba(255,255,255,.18)}
     .meta{padding:12px 14px 14px}
+    /* “제목만” 깔끔하게: 여백/굵기만, 특수효과 X */
     .vtitle{margin:0 0 6px; font-size:15.5px; font-weight:800; line-height:1.35; letter-spacing:-.2px;
       display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
-    .sub{font-size:13px; color:var(--muted)}
+    .sub{font-size:13px; color:#6b7280}
 
-    .status{padding:20px 0; text-align:center; color:var(--muted)}
-    .spinner{ width:20px; height:20px; border:3px solid #e5e7eb; border-top-color:var(--primary); border-radius:50%; display:inline-block; animation:spin 1s linear infinite; vertical-align:-4px}
-    @keyframes spin{ to{ transform: rotate(360deg) } }
+    .status{padding:20px 0; text-align:center; color:#6b7280}
+    .spinner{width:20px; height:20px; border:3px solid #e5e7eb; border-top-color:var(--primary); border-radius:50%; display:inline-block; animation:spin 1s linear infinite; vertical-align:-4px}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
@@ -80,21 +65,21 @@
     <div class="card">
       <h1>야구 구단 유튜브 영상</h1>
 
-      <!-- 구단 선택(마커 느낌) -->
+      <!-- 구단 선택 -->
       <div id="teams" class="teams"></div>
 
-      <!-- 롱폼 섹션 -->
+      <!-- 롱폼 -->
       <section class="sect">
         <div class="sect-head">
-          <div class="title">롱폼</div>
-          <div class="nav">
+          <div class="left">
+            <div class="title">롱폼</div>
             <div class="pager">
               <button id="long-prev" class="arrow">◀</button>
               <span id="long-page" class="page-indicator">1 / 1</span>
               <button id="long-next" class="arrow">▶</button>
             </div>
-            <span id="count-long" class="count"></span>
           </div>
+       
         </div>
         <div class="carousel">
           <div class="viewport"><div id="long-track" class="track"></div></div>
@@ -102,18 +87,18 @@
         <div id="long-status" class="status" style="display:none"></div>
       </section>
 
-      <!-- 숏폼 섹션 -->
+      <!-- 숏폼 -->
       <section class="sect">
         <div class="sect-head">
-          <div class="title">숏폼</div>
-          <div class="nav">
+          <div class="left">
+            <div class="title">숏폼</div>
             <div class="pager">
               <button id="shorts-prev" class="arrow">◀</button>
               <span id="shorts-page" class="page-indicator">1 / 1</span>
               <button id="shorts-next" class="arrow">▶</button>
             </div>
-            <span id="count-shorts" class="count"></span>
           </div>
+        
         </div>
         <div class="carousel">
           <div class="viewport"><div id="shorts-track" class="track"></div></div>
@@ -124,109 +109,136 @@
   </div>
 
   <script>
-    // --------- 구단 목록(마커 10개) ----------
-    const TEAMS = [
-      "LG 트윈스","KT 위즈","두산 베어스","SSG 랜더스","키움 히어로즈",
-      "한화 이글스","NC 다이노스","KIA 타이거즈","롯데 자이언츠","삼성 라이온즈"
-    ];
+    // --- 구단 목록 ---
+    const TEAMS = ["LG 트윈스","KT 위즈","두산 베어스","SSG 랜더스","키움 히어로즈","한화 이글스","NC 다이노스","KIA 타이거즈","롯데 자이언츠","삼성 라이온즈"];
 
-    // --------- DOM 참조 ----------
+    // --- DOM ---
     const teamWrap = document.getElementById('teams');
-
-    const longTrack   = document.getElementById('long-track');
-    const longPrev    = document.getElementById('long-prev');
-    const longNext    = document.getElementById('long-next');
-    const longPage    = document.getElementById('long-page');
-    const longStatus  = document.getElementById('long-status');
-    const longCount   = document.getElementById('count-long');
+    const longTrack = document.getElementById('long-track');
+    const longPrev = document.getElementById('long-prev');
+    const longNext = document.getElementById('long-next');
+    const longPage = document.getElementById('long-page');
+    const longStatus = document.getElementById('long-status');
+   
 
     const shortsTrack = document.getElementById('shorts-track');
-    const shortsPrev  = document.getElementById('shorts-prev');
-    const shortsNext  = document.getElementById('shorts-next');
-    const shortsPage  = document.getElementById('shorts-page');
-    const shortsStatus= document.getElementById('shorts-status');
-    const shortsCount = document.getElementById('count-shorts');
+    const shortsPrev = document.getElementById('shorts-prev');
+    const shortsNext = document.getElementById('shorts-next');
+    const shortsPage = document.getElementById('shorts-page');
+    const shortsStatus = document.getElementById('shorts-status');
+   
 
-    // --------- 상태 ----------
+    // --- 상태 ---
     let currentTeam = TEAMS[0];
-    const pageSize = 5;
     let state = {
-      long:   { list:[], page:0 },
-      shorts: { list:[], page:0 }
+      long:   { list:[], page:0, perPage:5 },
+      shorts: { list:[], page:0, perPage:5 }
     };
 
-    // --------- 유틸 (간소화) ----------
-    function sanitize(s){ if(!s) return ''; return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-    function stripHashtags(s){ if(!s) return ''; return s.replace(/(^|\s)[#＃][^\s#＃]+/g,' ').replace(/\s{2,}/g,' ').trim(); }
-    function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return String(iso); const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); return `${y}.${m}.${dd}`; }
+    // --- 유틸: 엔티티 복원 + 해시태그 정리 + 길이 변환 ---
+    function decodeEntities(s){
+      if(!s) return '';
+      const ta=document.createElement('textarea'); ta.innerHTML=s; return ta.value;
+    }
+    function cleanTitle(s){
+      // 1) &quot; 같은 엔티티를 실제 문자로 복원
+      let t = decodeEntities(s || '');
+      // 2) 끝에 달린 해시태그 뭉치를 통째로 제거
+      t = t.replace(/\s*(?:[#＃][^\s#＃]+(?:\s|$))+$/,'');
+      // 3) 혹시 중간 해시태그도 있으면 정리
+      t = t.replace(/(^|\s)[#＃][^\s#＃]+/g,' ');
+      // 4) 여분 공백 정리
+      return t.replace(/\s{2,}/g,' ').trim();
+    }
+    function sanitize(s){ return s ? String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) : '' }
+    function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return String(iso);
+      return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; }
+    function isoToClock(pt){
+      if(!pt || !/^PT/.test(pt)) return null;
+      const m = pt.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+      if(!m) return null; const h=+(m[1]||0), mi=+(m[2]||0), s=+(m[3]||0);
+      return h ? `${h}:${String(mi).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${mi}:${String(s).padStart(2,'0')}`;
+    }
+
     function mkCard(v){
-      const a = document.createElement('a'); a.className='video'; a.href = v.url || v.watch_url || '#'; a.target = '_blank'; a.rel='noopener';
-      const title = stripHashtags(v.title || '');
-      a.innerHTML = `
+      const a=document.createElement('a'); a.className='video';
+      a.href=v.url||v.watch_url||'#'; a.target='_blank'; a.rel='noopener';
+      const title = cleanTitle(v.title||'');
+      const dur = v.duration && v.duration.startsWith('PT') ? isoToClock(v.duration) : v.duration;
+      a.innerHTML=`
         <div class="thumb">
-          <img loading="lazy" src="${sanitize(v.thumbnail || v.thumbnail_url || '')}" alt="">
-          ${v.duration ? `<div class="badge">${sanitize(v.duration)}</div>`:''}
+          <img loading="lazy" src="${sanitize(v.thumbnail||v.thumbnail_url||'')}" alt="">
+          ${dur ? `<div class="badge">${sanitize(dur)}</div>`:''}
         </div>
         <div class="meta">
           <h3 class="vtitle">${sanitize(title)}</h3>
-          <div class="sub">${sanitize(v.channel || v.uploader || '')} · ${fmtDate(v.published_at || v.publish_date)}</div>
-        </div>
-      `;
+          <div class="sub">${sanitize(v.channel||v.uploader||'')} · ${fmtDate(v.published_at||v.publish_date)}</div>
+        </div>`;
       return a;
     }
-    function setLoading(which, on){ const box = which==='long' ? longStatus : shortsStatus; box.style.display = on ? 'block' : 'none'; if(on) box.innerHTML = `<span class="spinner"></span> 불러오는 중`; }
-    function setEmpty(which, msg){ const box = which==='long' ? longStatus : shortsStatus; box.style.display='block'; box.textContent = msg || '결과가 없습니다.'; }
 
-    // --------- 캐러셀 렌더/이동 ----------
+    function setLoading(which,on){
+      const el = which==='long'? longStatus:shortsStatus;
+      el.style.display = on ? 'block' : 'none';
+      if(on) el.innerHTML = `<span class="spinner"></span> 불러오는 중`;
+    }
+    function setEmpty(which,msg){
+      const el = which==='long'? longStatus:shortsStatus;
+      el.style.display='block'; el.textContent = msg || '결과가 없습니다.';
+    }
+    function currentPerPage(){
+      const w=window.innerWidth;
+      if(w<=520) return 1; if(w<=680) return 2; if(w<=900) return 3; if(w<=1100) return 4; return 5;
+    }
+
+    // --- 캐러셀 ---
     function renderTrack(which){
       const s = state[which];
-      const track = which==='long' ? longTrack : shortsTrack;
-      const pageEl = which==='long' ? longPage : shortsPage;
-      const prevBtn= which==='long' ? longPrev : shortsPrev;
-      const nextBtn= which==='long' ? longNext : shortsNext;
+      const track  = which==='long'? longTrack:shortsTrack;
+      const pageEl = which==='long'? longPage:shortsPage;
+      const prev   = which==='long'? longPrev:shortsPrev;
+      const next   = which==='long'? longNext:shortsNext;
 
-      track.innerHTML = '';
-      s.list.forEach(v => track.appendChild(mkCard(v)));
+      s.perPage = currentPerPage();
 
-      const totalPages = Math.max(1, Math.ceil(s.list.length / pageSize));
+      // 채우기
+      track.innerHTML=''; s.list.forEach(v=>track.appendChild(mkCard(v)));
+
+      const totalPages = Math.max(1, Math.ceil(s.list.length / s.perPage));
       if(s.page >= totalPages) s.page = totalPages - 1;
-      pageEl.textContent = `${totalPages === 0 ? 0 : (s.page+1)} / ${totalPages}`;
-      prevBtn.disabled = (s.page <= 0 || totalPages<=1);
-      nextBtn.disabled = (s.page >= totalPages-1 || totalPages<=1);
+
+      pageEl.textContent = `${totalPages===0 ? 0 : (s.page+1)} / ${totalPages}`;
+      prev.disabled = (s.page<=0 || totalPages<=1);
+      next.disabled = (s.page>=totalPages-1 || totalPages<=1);
 
       const pageWidth = track.parentElement.clientWidth;
       track.style.transform = `translateX(-${s.page * pageWidth}px)`;
     }
     function bindArrows(){
-      longPrev.onclick = ()=>{ if(state.long.page>0){ state.long.page--; renderTrack('long'); } };
-      longNext.onclick = ()=>{ const max=Math.ceil(state.long.list.length/pageSize)-1; if(state.long.page<max){ state.long.page++; renderTrack('long'); } };
-      shortsPrev.onclick = ()=>{ if(state.shorts.page>0){ state.shorts.page--; renderTrack('shorts'); } };
-      shortsNext.onclick = ()=>{ const max=Math.ceil(state.shorts.list.length/pageSize)-1; if(state.shorts.page<max){ state.shorts.page++; renderTrack('shorts'); } };
+      longPrev.onclick=()=>{ if(state.long.page>0){ state.long.page--; renderTrack('long'); } };
+      longNext.onclick=()=>{ const max=Math.ceil(state.long.list.length/state.long.perPage)-1; if(state.long.page<max){ state.long.page++; renderTrack('long'); } };
+      shortsPrev.onclick=()=>{ if(state.shorts.page>0){ state.shorts.page--; renderTrack('shorts'); } };
+      shortsNext.onclick=()=>{ const max=Math.ceil(state.shorts.list.length/state.shorts.perPage)-1; if(state.shorts.page<max){ state.shorts.page++; renderTrack('shorts'); } };
       window.addEventListener('resize', ()=>{ renderTrack('long'); renderTrack('shorts'); });
     }
 
-    // --------- 데이터 요청(단순화: 팀만 전달) ----------
-    async function fetchForTeam(team){
-      const u = `/search?team=${encodeURIComponent(team)}`;
-      const r = await fetch(u);
+    // --- 데이터 요청 ---
+    async function fetchTeam(team){
+      const r = await fetch(`/search?team=${encodeURIComponent(team)}`);
       if(!r.ok) throw new Error('fetch failed');
       const j = await r.json();
-      return { long: j.long || j.results_long || [], shorts: j.shorts || j.results_shorts || [] };
+      return { long: j.long||[], shorts: j.shorts||j.short||[] };
     }
 
     async function load(team){
-      setLoading('long', true); setLoading('shorts', true);
-      longTrack.innerHTML=''; shortsTrack.innerHTML=''; longStatus.style.display='none'; shortsStatus.style.display='none';
-      longCount.textContent=''; shortsCount.textContent='';
-
-      let data = {long:[], shorts:[]};
-      try{
-        data = await fetchForTeam(team);
-      }catch(e){
-        setEmpty('long','불러오기 실패'); setEmpty('shorts','불러오기 실패'); return;
-      }finally{
-        setLoading('long', false); setLoading('shorts', false);
-      }
+      setLoading('long',true); setLoading('shorts',true);
+      longTrack.innerHTML=''; shortsTrack.innerHTML='';
+      longStatus.style.display='none'; shortsStatus.style.display='none';
+      
+      let data={long:[],shorts:[]};
+      try{ data = await fetchTeam(team); }
+      catch(e){ setEmpty('long','불러오기 실패'); setEmpty('shorts','불러오기 실패'); return; }
+      finally{ setLoading('long',false); setLoading('shorts',false); }
 
       state.long.list   = Array.isArray(data.long)   ? data.long   : [];
       state.shorts.list = Array.isArray(data.shorts) ? data.shorts : [];
@@ -235,26 +247,28 @@
       if(state.long.list.length===0) setEmpty('long','롱폼 결과 없음');
       if(state.shorts.list.length===0) setEmpty('shorts','숏폼 결과 없음');
 
-      longCount.textContent   = state.long.list.length   ? `(${state.long.list.length}개)`   : '';
-      shortsCount.textContent = state.shorts.list.length ? `(${state.shorts.list.length}개)` : '';
+     
 
       renderTrack('long'); renderTrack('shorts');
     }
 
-    // --------- 팀 버튼 구성 ----------
+    // --- 팀 버튼 ---
     function buildTeamButtons(){
-      teamWrap.innerHTML = '';
-      TEAMS.forEach((t, i)=>{ 
-        const b = document.createElement('button');
-        b.className = 'team-btn' + (i===0 ? ' active':'');
-        b.textContent = t;
-        b.onclick = ()=>{ document.querySelectorAll('.team-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); currentTeam = t; load(currentTeam); };
+      teamWrap.innerHTML='';
+      TEAMS.forEach((t,i)=>{
+        const b=document.createElement('button');
+        b.className='team-btn'+(i===0?' active':''); b.textContent=t;
+        b.onclick=()=>{
+          document.querySelectorAll('.team-btn').forEach(x=>x.classList.remove('active'));
+          b.classList.add('active');
+          currentTeam=t; load(currentTeam);
+        };
         teamWrap.appendChild(b);
       });
     }
 
-    // --------- 초기화 ----------
-    (function init(){
+    // --- init ---
+    (function(){
       buildTeamButtons();
       bindArrows();
       load(currentTeam);
@@ -262,3 +276,4 @@
   </script>
 </body>
 </html>
+
