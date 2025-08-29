@@ -9,19 +9,18 @@ SHORT_MAX_SEC = int(os.getenv("SHORT_MAX_SEC", "75"))           # 숏폼 기준(
 RECENT_PER_CHANNEL = int(os.getenv("RECENT_PER_CHANNEL", "50")) # 공식/보조 채널당 최근 수집 개수
 BACKFILL_PER_QUERY = int(os.getenv("BACKFILL_PER_QUERY", "30")) # 일반 검색 쿼리별 수집 개수
 
-# ==== 네가 준 공식 채널(기본값) ====
+# ==== 기본 공식 채널 (네가 준 값) ====
 DEFAULT_OFFICIAL = {
     "키움 히어로즈": "UC_MA8-XEaVmvyayPzG66IKg",
     "NC 다이노스":  "UC8_FRgynMX8wlGsU6Jh3zKg",
     "LG 트윈스":    "UCL6QZZxb-HR4hCh_eFAnQWA",
-    "롯데 자이언츠": "UCAZQZdSY5_YrziMPqXi-Zfw",
+    "롯데 자이언츠":"UCAZQZdSY5_YrziMPqXi-Zfw",
     "KT 위즈":     "UCvScyjGkBUx2CJDMNAi9Twg",
-    "삼성 라이온즈": "UCMWAku3a3h65QpLm63Jf2pw",
-    "KIA 타이거즈": "UCKp8knO8a6tSI1oaLjfd9XA",
-    "두산 베어스":  "UCsebzRfMhwYfjeBIxNX1brg",
-    "SSG 랜더스":  "UCt8iRtgjVqm5rJHNl1TUojg",
-    "한화 이글스":  "UCdq4Ji3772xudYRUatdzRrg",
-    # 보조 채널(원하면 환경변수로 넣어 사용) 예: "KBO": "UCxxxxxxxxxxxxxxxxxxxxx"
+    "삼성 라이온즈":"UCMWAku3a3h65QpLm63Jf2pw",
+    "KIA 타이거즈":"UCKp8knO8a6tSI1oaLjfd9XA",
+    "두산 베어스": "UCsebzRfMhwYfjeBIxNX1brg",
+    "SSG 랜더스": "UCt8iRtgjVqm5rJHNl1TUojg",
+    "한화 이글스":"UCdq4Ji3772xudYRUatdzRrg",
 }
 
 # 약어/별칭 → 정식명
@@ -71,7 +70,6 @@ def _title_has_team(title: str, team: str) -> bool:
     if not title or not team: return False
     t = _norm(title)
     keys = {_norm(team)}
-    # team이 정식명이라면 약어 키도 함께 허용
     for k, full in ALIASES.items():
         if full == team: keys.add(_norm(k))
     return any(k in t for k in keys)
@@ -117,15 +115,15 @@ def _recent_from_channel(yt, channel_id: str, limit: int, team_filter: str = "")
         token = resp.get("nextPageToken")
         if not token: break
     vids = _videos_by_ids(yt, ids)
-    # 팀명 필터가 있으면 제목에 팀명이 들어간 것만 유지
     return [v for v in vids if not team_filter or _title_has_team(v.get("title"), team_filter)]
 
 def _search_multi(yt, queries: List[str], per_query: int, team_filter: str) -> List[Dict]:
     all_ids: List[str] = []
     for q in queries:
         token = None
-        while True:
-            n = min(50, per_query - (len(all_ids) % per_query))
+        grabbed = 0
+        while grabbed < per_query:
+            n = min(50, per_query - grabbed)
             resp = yt.search().list(
                 part="id",
                 q=q, type="video", order="date",
@@ -133,11 +131,12 @@ def _search_multi(yt, queries: List[str], per_query: int, team_filter: str) -> L
                 maxResults=n, pageToken=token, safeSearch="none"
             ).execute()
             ids = [it["id"]["videoId"] for it in resp.get("items", []) if it.get("id", {}).get("videoId")]
+            if not ids: break
             all_ids += ids
+            grabbed += len(ids)
             token = resp.get("nextPageToken")
-            if not token or len(ids) == 0 or len(all_ids) >= per_query: break
+            if not token: break
     vids = _videos_by_ids(yt, all_ids)
-    # 반드시 팀명이 제목에 포함된 것만 남긴다
     return [v for v in vids if _title_has_team(v.get("title"), team_filter)]
 
 def _dedup(items: List[Dict]) -> List[Dict]:
@@ -151,10 +150,9 @@ def _dedup(items: List[Dict]) -> List[Dict]:
 def search_videos_by_team(team_name: str, max_results: int = 60) -> Tuple[List[Dict], List[Dict]]:
     """
     리턴: (shorts, longs)
-    - 1) 팀 '공식 채널' 최신 업로드 대량 수집(핵심)
-    - 2) 보조 채널(KBO 등)에서 팀명이 제목에 들어간 영상 추가
-    - 3) 일반 검색: '팀명 하이라이트/KBO/경기 하이라이트' 쿼리로 보강(제목에 팀명 필수)
-    - 4) 합치고 최신순 정렬 → 숏폼/롱폼 분리
+    1) 팀 '공식 채널' 최신 업로드 중심
+    2) KBO 등 보조 채널(환경변수 OFFICIAL_CHANNELS_JSON에 "KBO" 등 등록 시)에서 '팀명 포함' 추가
+    3) 일반 검색('팀명 하이라이트/KBO/경기 하이라이트')로 보강(제목에 팀명 필수)
     """
     team_name = (team_name or "").strip()
     if not team_name: return [], []
@@ -163,17 +161,18 @@ def search_videos_by_team(team_name: str, max_results: int = 60) -> Tuple[List[D
 
     resolved = _resolve_team(team_name)
 
-    # 1) 공식 채널 중심
+    # 1) 공식 채널
     official_cids = OFFICIAL_MAP.get(resolved, []) + OFFICIAL_MAP.get(ALIASES.get(resolved, ""), [])
     official_cids = [c for c in official_cids if c]
     official: List[Dict] = []
     for cid in official_cids:
         try:
-            official += _recent_from_channel(yt, cid, limit=RECENT_PER_CHANNEL, team_filter="")  # 공식은 필터 없이
+            # 공식 채널은 필터 없이
+            official += _recent_from_channel(yt, cid, limit=RECENT_PER_CHANNEL, team_filter="")
         except Exception:
             pass
 
-    # 2) 보조 채널(KBO 등) — 환경변수/맵에 "KBO", "KBO 리그" 같은 키가 있으면 활용
+    # 2) 보조 채널 (예: "KBO")
     extras: List[Dict] = []
     for k in ("KBO", "KBO 리그", "KBO League"):
         for cid in OFFICIAL_MAP.get(k, []):
@@ -182,7 +181,7 @@ def search_videos_by_team(team_name: str, max_results: int = 60) -> Tuple[List[D
             except Exception:
                 pass
 
-    # 3) 일반 검색(제목에 팀명 필수)
+    # 3) 일반 검색
     queries = [
         f"{resolved} 하이라이트",
         f"{resolved} KBO",
@@ -196,23 +195,19 @@ def search_videos_by_team(team_name: str, max_results: int = 60) -> Tuple[List[D
     except Exception:
         backfill = []
 
-    # 4) 병합/중복 제거/정렬
     merged = _dedup(official + extras + backfill)
     merged.sort(key=lambda v: (v.get("publish_date") or ""), reverse=True)
 
-    # 5) 숏폼/롱폼 분리
     shorts = [v for v in merged if (v.get("seconds") or 0) <= SHORT_MAX_SEC]
     longs  = [v for v in merged if (v.get("seconds") or 0) >  SHORT_MAX_SEC]
 
-    # 필요 시 개수 제한
     if max_results and max_results > 0:
         shorts = shorts[:max_results]
         longs  = longs[:max_results]
     return shorts, longs
 
-# 구버전 호환
+# 구버전 호환 (롱폼만)
 def get_youtube_videos(team_name: str, max_results: int = 60) -> List[Dict]:
     _, longs = search_videos_by_team(team_name, max_results=max_results)
     return longs
-
 
