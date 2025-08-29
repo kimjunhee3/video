@@ -1,12 +1,12 @@
-#Club_flask.py
-
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import re
 import os
 import time
+import json
 from typing import Tuple
 
+# 간단 in-memory TTL 캐시 (프로세스 내)
 _SEARCH_CACHE = {}
 SEARCH_CACHE_TTL = int(os.getenv("SEARCH_CACHE_TTL", "60"))  # seconds
 
@@ -39,19 +39,16 @@ _search_func = None
 _legacy_single_fetch = None
 
 try:
-    # 이상적: (shorts, longs) 튜플 반환
     from crawl_club import search_videos_by_team as _search_func  # type: ignore
 except Exception:
     _search_func = None
 
 if _search_func is None:
-    # 단일 리스트만 반환하는 과거 함수들
     try:
         from crawl_club import get_youtube_videos as _legacy_single_fetch  # type: ignore
     except Exception:
         _legacy_single_fetch = None
         try:
-            # 과거 모듈명
             from crawl_youtube import search_youtube as _legacy_single_fetch  # type: ignore
         except Exception:
             _legacy_single_fetch = None
@@ -60,7 +57,7 @@ def _cached_safe_search(team_name: str, max_results: int = 60) -> Tuple[list, li
     key = f"{team_name}::{max_results}"
     rec = _SEARCH_CACHE.get(key)
     now = time.time()
-    if rec and now - rec["ts"] < SEARCH_CACHE_TTL:
+    if rec and (now - rec["ts"] < SEARCH_CACHE_TTL):
         return rec["value"]
     val = _safe_search(team_name, max_results=max_results)
     _SEARCH_CACHE[key] = {"ts": now, "value": val}
@@ -69,7 +66,7 @@ def _cached_safe_search(team_name: str, max_results: int = 60) -> Tuple[list, li
 def _safe_search(team_name: str, max_results: int = 60):
     """
     통합 래퍼:
-    - 우선 최신 search_videos_by_team 사용 (shorts, longs)
+    - 우선 search_videos_by_team 사용 (shorts, longs)
     - 없다면 단일 함수로 longs만 채움
     """
     if _search_func:
@@ -89,12 +86,10 @@ def _safe_search(team_name: str, max_results: int = 60):
 
     return [], []
 
-
 # ---------------------------
 # 3) 제목 정제/필터 (LG 모호성 제거 + 해시태그 제거)
 # ---------------------------
 NEGATIVE_BY_TEAM = {
-    # LG 관련 비야구 금칙어
     "LG": [
         "전자", "에너지솔루션", "엔솔", "디스플레이", "u+", "유플러스",
         "생활건강", "하우시스", "이노텍", "헬로비전", "그룹", "기업분석", "그램", "oled",
@@ -106,30 +101,26 @@ BASEBALL_SIGNALS = [
     "스포츠", "타이거즈", "트윈스", "베어스", "위즈", "자이언츠", "다이노스", "라이온즈", "히어로즈", "랜더스",
 ]
 
-HASHTAG_RE = re.compile(r"(?:^|\s)#\S+")     # 해시태그 삭제
-SPACE_RE   = re.compile(r"\s{2,}")           # 다중 공백 정리
-BAR_TRIM   = re.compile(r"(^[\s\|\-·]+|[\s\|\-·]+$)")
+HASHTAG_RE = re.compile(r"(?:^|\s)#\S+")
+SPACE_RE = re.compile(r"\s{2,}")
+BAR_TRIM = re.compile(r"(^[\s\|\-·]+|[\s\|\-·]+$)")
 
 def _clean_title(txt: str) -> str:
     if not txt:
         return ""
-    t = HASHTAG_RE.sub(" ", txt)      # #해시태그 제거
-    t = SPACE_RE.sub(" ", t)          # 공백 정리
-    t = BAR_TRIM.sub("", t.strip())   # 양끝 구분자 정리
+    t = HASHTAG_RE.sub(" ", txt)
+    t = SPACE_RE.sub(" ", t)
+    t = BAR_TRIM.sub("", t.strip())
     return t
 
 def _title_ok(title: str, team_key: str, team_full: str) -> bool:
     if not title:
         return False
     s = title.lower()
-
-    # 금칙어(팀별)
     if team_key in NEGATIVE_BY_TEAM:
         for bad in NEGATIVE_BY_TEAM[team_key]:
             if bad.lower() in s:
                 return False
-
-    # 야구 신호어 or 팀명 신호어 포함해야 통과
     if team_full.lower() in s or team_key.lower() in s:
         return True
     return any(k.lower() in s for k in BASEBALL_SIGNALS)
@@ -155,12 +146,12 @@ def _postprocess(videos, team_key: str, team_full: str):
             "title": t,
             "url": v.get("url") or v.get("watch_url"),
             "thumbnail": v.get("thumbnail") or v.get("thumbnail_url"),
-            # 프런트가 기대하는 키로 정규화
             "channel": v.get("channel") or v.get("channelTitle") or v.get("uploader"),
             "published_at": v.get("published_at") or v.get("publish_date"),
             "duration": v.get("duration") or _fmt_duration(v.get("seconds")),
         })
     return out
+
 # ---------------------------
 # 4) 라우트
 # ---------------------------
@@ -171,9 +162,8 @@ def health():
 @app.route("/")
 @app.route("/club")
 def index():
-    # 기본 팀
     team_param = (request.args.get("team") or "").strip() or "LG"
-    team_name = TEAM_MAP.get(team_param, team_param)  # 약어면 한글로, 이미 한글이면 그대로
+    team_name = TEAM_MAP.get(team_param, team_param)
     return render_template("Club.html", team_name=team_name, teams=TEAM_MAP)
 
 @app.route("/search", methods=["GET", "POST"])
@@ -202,32 +192,14 @@ def search():
         team_key = club
         club_full = TEAM_MAP.get(club, club)
 
-    # 강제 갱신 요청 처리
+    # 강제 갱신 처리
     cache_key = f"{club_full}::60"
     if force:
         _SEARCH_CACHE.pop(cache_key, None)
 
-    # 실제 검색(캐시 적용)
+    # 검색(캐시 적용) 및 후처리
     shorts, longs = _cached_safe_search(club_full, max_results=60)
-
-    # 후처리(정제)
     shorts = _postprocess(shorts, team_key, club_full)
     longs  = _postprocess(longs,  team_key, club_full)
 
     return jsonify({"shorts": shorts, "short": shorts, "long": longs})
-
-    shorts, longs = _cached_safe_search(club_full, max_results=60)
-
-    # ✅ 정제: 해시태그 제거 + 야구 신호어 필터 + LG 금칙어 제외
-    shorts = _postprocess(shorts, team_key, club_full)
-    longs  = _postprocess(longs,  team_key, club_full)
-
-    return jsonify({"short": shorts, "long": longs})
-
-
-# ---------------------------
-# 5) 로컬 실행
-# ---------------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
