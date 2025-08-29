@@ -17,10 +17,75 @@
     .teams{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin:12px 0 4px}
     @media (max-width:900px){ .teams{grid-template-columns:repeat(3,minmax(0,1fr));} }
     @media (max-width:560px){ .teams{grid-template-columns:repeat(2,minmax(0,1fr));} }
-    .team-btn{border:1px solid #e5e7eb; background:#fff; border-radius:14px; padding:12px 14px;
-      font-weight:800; letter-spacing:-.2px; cursor:pointer; text-align:center; transition:all .12s ease; user-select:none;}
-    .team-btn:hover{ border-color:#c7d2fe; box-shadow:0 6px 16px rgba(31,78,216,.10) }
+
+    /* team button 기본 + hover 애니메이션(떠오르는 느낌 + 파동) */
+    .team-btn{
+      position:relative;
+      overflow:visible;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      border-radius:14px;
+      padding:12px 14px;
+      font-weight:800;
+      letter-spacing:-.2px;
+      cursor:pointer;
+      text-align:center;
+      transition:transform .18s cubic-bezier(.2,.9,.2,1), box-shadow .18s, background-color .12s, border-color .12s;
+      user-select:none;
+      will-change:transform, box-shadow;
+      transform-origin:center bottom;
+    }
+    .team-btn:focus{ outline: none; box-shadow: 0 6px 18px rgba(31,78,216,.12); }
+
+    .team-btn:hover{
+      transform: translateY(-6px) scale(1.03);
+      border-color: #c7d2fe;
+      box-shadow: 0 10px 28px rgba(31,78,216,.12);
+      background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+      z-index:2;
+    }
     .team-btn.active{ background:#eef2ff; border-color:#c7d2fe; color:#1e3a8a }
+
+    .team-btn::after{
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:36px;
+      height:36px;
+      transform:translate(-50%,-50%) scale(.6);
+      border-radius:50%;
+      background: radial-gradient(circle at 50% 40%, rgba(31,78,216,0.22), rgba(31,78,216,0.06) 40%, transparent 60%);
+      pointer-events:none;
+      opacity:0;
+    }
+    .team-btn:hover::after{
+      animation:btn-ping .7s cubic-bezier(.2,.9,.2,1) forwards;
+      opacity:1;
+    }
+    @keyframes btn-ping{
+      0%{ transform:translate(-50%,-50%) scale(.6); opacity:.55; }
+      60%{ transform:translate(-50%,-72%) scale(1.15); opacity:.25; }
+      100%{ transform:translate(-50%,-90%) scale(1.8); opacity:0; }
+    }
+    .team-btn::before{
+      content:"";
+      position:absolute;
+      left:10%;
+      right:10%;
+      bottom:6px;
+      height:3px;
+      background:linear-gradient(90deg,var(--primary), #7aa2ff 70%);
+      border-radius:999px;
+      transform:scaleX(0);
+      transform-origin:center;
+      transition: transform .28s cubic-bezier(.2,.9,.2,1), opacity .18s;
+      opacity:0;
+    }
+    .team-btn:hover::before{
+      transform:scaleX(1);
+      opacity:1;
+    }
 
     /* 섹션 */
     .sect{margin-top:28px}
@@ -50,9 +115,19 @@
     .thumb img{width:100%; height:100%; object-fit:cover; display:block}
     .badge{position:absolute; left:10px; bottom:10px; padding:6px 10px; border-radius:999px; background:rgba(0,0,0,.78); color:#fff; font-size:12.5px; font-weight:700; border:1px solid rgba(255,255,255,.18)}
     .meta{padding:12px 14px 14px}
-    /* “제목만” 깔끔하게: 여백/굵기만, 특수효과 X */
-    .vtitle{margin:0 0 6px; font-size:15.5px; font-weight:800; line-height:1.35; letter-spacing:-.2px;
-      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+
+    /* 제목 관련 특수효과 전부 제거 — 아주 기본 스타일만 유지 */
+    .vtitle{
+      margin:0 0 6px;
+      font-size:15.5px;
+      font-weight:600; /* 약간 굵기 유지 */
+      line-height:1.35;
+      letter-spacing:0;
+      display:block;
+      overflow:visible; /* 줄임/클램프 등 제거 */
+      white-space:normal;
+      text-overflow:clip;
+    }
     .sub{font-size:13px; color:#6b7280}
 
     .status{padding:20px 0; text-align:center; color:#6b7280}
@@ -79,7 +154,6 @@
               <button id="long-next" class="arrow">▶</button>
             </div>
           </div>
-       
         </div>
         <div class="carousel">
           <div class="viewport"><div id="long-track" class="track"></div></div>
@@ -98,7 +172,6 @@
               <button id="shorts-next" class="arrow">▶</button>
             </div>
           </div>
-        
         </div>
         <div class="carousel">
           <div class="viewport"><div id="shorts-track" class="track"></div></div>
@@ -119,14 +192,12 @@
     const longNext = document.getElementById('long-next');
     const longPage = document.getElementById('long-page');
     const longStatus = document.getElementById('long-status');
-   
 
     const shortsTrack = document.getElementById('shorts-track');
     const shortsPrev = document.getElementById('shorts-prev');
     const shortsNext = document.getElementById('shorts-next');
     const shortsPage = document.getElementById('shorts-page');
     const shortsStatus = document.getElementById('shorts-status');
-   
 
     // --- 상태 ---
     let currentTeam = TEAMS[0];
@@ -141,18 +212,13 @@
       const ta=document.createElement('textarea'); ta.innerHTML=s; return ta.value;
     }
     function cleanTitle(s){
-      // 1) &quot; 같은 엔티티를 실제 문자로 복원
       let t = decodeEntities(s || '');
-      // 2) 끝에 달린 해시태그 뭉치를 통째로 제거
       t = t.replace(/\s*(?:[#＃][^\s#＃]+(?:\s|$))+$/,'');
-      // 3) 혹시 중간 해시태그도 있으면 정리
       t = t.replace(/(^|\s)[#＃][^\s#＃]+/g,' ');
-      // 4) 여분 공백 정리
       return t.replace(/\s{2,}/g,' ').trim();
     }
     function sanitize(s){ return s ? String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) : '' }
-    function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return String(iso);
-      return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; }
+    function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return String(iso); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; }
     function isoToClock(pt){
       if(!pt || !/^PT/.test(pt)) return null;
       const m = pt.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
@@ -201,7 +267,6 @@
 
       s.perPage = currentPerPage();
 
-      // 채우기
       track.innerHTML=''; s.list.forEach(v=>track.appendChild(mkCard(v)));
 
       const totalPages = Math.max(1, Math.ceil(s.list.length / s.perPage));
@@ -234,7 +299,7 @@
       setLoading('long',true); setLoading('shorts',true);
       longTrack.innerHTML=''; shortsTrack.innerHTML='';
       longStatus.style.display='none'; shortsStatus.style.display='none';
-      
+
       let data={long:[],shorts:[]};
       try{ data = await fetchTeam(team); }
       catch(e){ setEmpty('long','불러오기 실패'); setEmpty('shorts','불러오기 실패'); return; }
@@ -247,8 +312,6 @@
       if(state.long.list.length===0) setEmpty('long','롱폼 결과 없음');
       if(state.shorts.list.length===0) setEmpty('shorts','숏폼 결과 없음');
 
-     
-
       renderTrack('long'); renderTrack('shorts');
     }
 
@@ -258,22 +321,13 @@
       TEAMS.forEach((t,i)=>{
         const b=document.createElement('button');
         b.className='team-btn'+(i===0?' active':''); b.textContent=t;
+        b.setAttribute('type','button');
         b.onclick=()=>{
           document.querySelectorAll('.team-btn').forEach(x=>x.classList.remove('active'));
           b.classList.add('active');
           currentTeam=t; load(currentTeam);
         };
+        b.onkeyup = (e) => { if(e.key === 'Enter' || e.key === ' ') b.click(); };
         teamWrap.appendChild(b);
       });
     }
-
-    // --- init ---
-    (function(){
-      buildTeamButtons();
-      bindArrows();
-      load(currentTeam);
-    })();
-  </script>
-</body>
-</html>
-
