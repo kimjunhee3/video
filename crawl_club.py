@@ -178,6 +178,26 @@ def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[D
 
     return shorts, longs
 
+
+def yt_self_test():
+    yt = _build_yt_client()
+    if yt is None:
+        return {"ok": False, "where": "build", "error": "NO_API_KEY"}
+    try:
+        r = yt.search().list(part="id", q="KBO", type="video", maxResults=1).execute()
+        return {"ok": True, "items": len(r.get("items", []))}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        status = getattr(getattr(e, "resp", None), "status", None)
+        msg = getattr(e, "content", b"")
+        if isinstance(msg, (bytes, bytearray)):
+            try:
+                msg = msg.decode("utf-8", "ignore")
+            except Exception:
+                msg = str(msg)
+        return {"ok": False, "where": "http", "status": status, "message": str(msg)[:300]}
+
 # (구버전 호환) 롱폼만
 def get_youtube_videos(team_name: str, max_results: int = 60) -> List[Dict]:
     _, longs = search_videos_by_team(team_name, max_results=max_results)
