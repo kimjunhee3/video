@@ -88,16 +88,17 @@ BASEBALL_SIGNALS = [
     "스포츠", "타이거즈", "트윈스", "베어스", "위즈", "자이언츠", "다이노스", "라이온즈", "히어로즈", "랜더스",
 ]
 
-HASHTAG_RE = re.compile(r"(?:^|\s)#\S+")     # 해시태그 삭제
-SPACE_RE   = re.compile(r"\s{2,}")           # 다중 공백 정리
-BAR_TRIM   = re.compile(r"(^[\s\|\-·]+|[\s\|\-·]+$)")
+HASHTAG_CUT = re.compile(r"\s*[#＃].*$")
 
 def _clean_title(txt: str) -> str:
     if not txt:
         return ""
-    t = HASHTAG_RE.sub(" ", txt)      # #해시태그 제거
-    t = SPACE_RE.sub(" ", t)          # 공백 정리
-    t = BAR_TRIM.sub("", t.strip())   # 양끝 구분자 정리
+    # 1) 첫 해시태그(# 또는 ＃) 이후를 통째로 제거
+    t = HASHTAG_CUT.sub("", txt)
+
+    # 2) 기존 정리 로직 유지
+    t = SPACE_RE.sub(" ", t)          # 다중 공백 정리
+    t = BAR_TRIM.sub("", t.strip())   # 양끝 구분자( | - · ) 정리
     return t
 
 def _title_ok(title: str, team_key: str, team_full: str) -> bool:
