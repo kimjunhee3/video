@@ -1,4 +1,3 @@
-# crawl_club.py
 import os
 import re
 from typing import List, Dict, Any, Optional, Tuple
@@ -6,24 +5,20 @@ from typing import List, Dict, Any, Optional, Tuple
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-SHORT_MAX_SEC = int(os.getenv("SHORT_MAX_SEC", "75"))  # 숏폼 기준(초)
+# 숏폼 기준(초) - 환경변수로 조정 가능
+SHORT_MAX_SEC = int(os.getenv("SHORT_MAX_SEC", "75"))
 
-def _build_yt_client() -> Optional[Any]:
-    api_key = os.getenv("YT_API_KEY") or os.getenv("YOUTUBE_API_KEY")
-    if not api_key:
-        return None
-    # Render 같은 환경에선 cache_discovery=False 권장
-    return build("youtube", "v3", developerKey=api_key, cache_discovery=False)
-
-_duration_re = re.compile(
+# ISO8601 PT#M#S → 초
+_DURATION_RE = re.compile(
     r"P(?:(?P<days>\d+)D)?"
     r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?"
 )
 
+
 def _iso8601_to_seconds(duration: str) -> int:
     if not duration:
         return 0
-    m = _duration_re.fullmatch(duration)
+    m = _DURATION_RE.fullmatch(duration)
     if not m:
         return 0
     days = int(m.group("days") or 0)
@@ -32,12 +27,22 @@ def _iso8601_to_seconds(duration: str) -> int:
     seconds = int(m.group("seconds") or 0)
     return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
+
+def _build_yt_client() -> Optional[Any]:
+    api_key = os.getenv("YT_API_KEY") or os.getenv("YOUTUBE_API_KEY")
+    if not api_key:
+        return None
+    # Render 같은 환경에선 cache_discovery=False 권장
+    return build("youtube", "v3", developerKey=api_key, cache_discovery=False)
+
+
 def _normalize_query(team: str) -> str:
     team = (team or "").strip()
     if not team:
         return ""
     # 기본적으로 하이라이트 중심으로
     return f"{team} 하이라이트"
+
 
 def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[Dict], List[Dict]]:
     """
@@ -50,6 +55,7 @@ def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[D
 
     yt = _build_yt_client()
     if yt is None:
+        # API 키 없으면 빈 결과
         return [], []
 
     q = _normalize_query(team_name)
@@ -77,8 +83,8 @@ def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[D
     if not items:
         return [], []
 
-    # id 목록
-    ids = []
+    # id 목록 및 기본 메타
+    ids: List[str] = []
     base_map: Dict[str, Dict[str, Any]] = {}
     for it in items:
         vid = (it.get("id") or {}).get("videoId")
@@ -98,13 +104,13 @@ def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[D
         ids.append(vid)
 
     # 2) videos.list로 길이 가져오기
-    shorts, longs = [], []
+    shorts: List[Dict[str, Any]] = []
+    longs: List[Dict[str, Any]] = []
+    if not ids:
+        return [], []
+
     try:
-        detail_resp = (
-            yt.videos()
-            .list(part="contentDetails", id=",".join(ids))
-            .execute()
-        )
+        detail_resp = yt.videos().list(part="contentDetails", id=",".join(ids)).execute()
         for v in detail_resp.get("items", []):
             vid = v.get("id")
             dur_iso = (v.get("contentDetails") or {}).get("duration")
