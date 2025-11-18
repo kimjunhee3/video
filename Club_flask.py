@@ -95,6 +95,47 @@ NEGATIVE_BY_TEAM = {
         "상품권", "현금지원", "지원금", "광고", "cf", "광고영상",
         "kt wiz esports", "e스포츠", "롤", "리그오브레전드",
     ],
+    # 두산 그룹/산업
+    "두산": [
+        "두산중공업", "두산에너빌리티", "건설", "산업", "플랜트", "연봉", "면접", "채용",
+        "기업분석", "재무제표", "주가",
+    ],
+    # SSG / 유통
+    "SSG": [
+        "ssg.com", "쓱닷컴", "이마트", "백화점", "마트", "창고형", "유통", "푸드마켓",
+        "신세계", "스타필드",
+    ],
+    # 키움 / 증권
+    "키움": [
+        "키움증권", "영웅문", "mts", "hts", "주식", "선물옵션", "선물", "옵션",
+        "투자", "운용", "펀드", "ELS", "DLS",
+    ],
+    # KIA / 자동차
+    "KIA": [
+        "기아", "기아자동차", "자동차", "ev", "전기차", "하이브리드",
+        "k3", "k5", "k7", "k8", "스포티지", "쏘렌토", "셀토스", "모닝", "카니발",
+    ],
+    # 삼성 / 전자, 금융 등
+    "삼성": [
+        "삼성전자", "전자", "반도체", "디스플레이", "갤럭시", "휴대폰", "핸드폰",
+        "노트북", "태블릿", "버즈", "워치", "tv", "티비", "생명", "화재",
+        "연봉", "면접", "채용", "기업분석",
+    ],
+    # NC / 게임사
+    "NC": [
+        "nc소프트", "엔씨소프트", "게임", "mmorpg", "리니지", "아이온", "블소",
+        "길드워", "트릭스터m", "리니지m", "리니지w",
+    ],
+    # 롯데 / 유통, 놀이공원
+    "롯데": [
+        "롯데월드", "놀이공원", "롯데마트", "롯데백화점", "롯데리아",
+        "롯데시네마", "면세점", "월드타워", "아쿠아리움",
+    ],
+    # 한화 / 방산, 에너지
+    "한화": [
+        "한화솔루션", "한화에어로스페이스", "방산", "방위산업", "태양광",
+        "연봉", "면접", "채용", "기업분석", "주가",
+    ],
 }
 
 # 야구 관련 키워드 (제목에 등장하면 야구일 확률↑)
@@ -102,6 +143,13 @@ BASEBALL_SIGNALS = [
     "KBO", "프로야구", "야구", "하이라이트", "경기", "1군", "2군", "퓨처스", "중계", "리그",
     "스포츠", "타이거즈", "트윈스", "베어스", "위즈", "자이언츠", "다이노스", "라이온즈", "히어로즈", "랜더스",
     "선발", "불펜", "마무리", "홈런", "타석", "타자", "투수", "안타", "득점", "실점",
+]
+
+# 애매한 팀에 강하게 적용할 '야구 핵심 신호어'
+BASEBALL_CORE_SIGNALS = [
+    "kbo", "프로야구", "야구",
+    "홈런", "타석", "타자", "투수", "안타", "득점", "실점",
+    "선발", "불펜", "마무리", "타격",
 ]
 
 # 팀별 공식/준공식 채널 키워드 (채널명이 이걸 포함하면 무조건 통과 + 상단 정렬)
@@ -138,8 +186,42 @@ OFFICIAL_CHANNEL_KEYWORDS = {
     ],
 }
 
-# LG / KT 같이 애매한 약어
-AMBIGUOUS_KEYS = {"LG", "KT"}
+# 제목 안에서 팀을 가리키는 패턴 (팀 전체/마스코트 명)
+TEAM_TITLE_PATTERNS = {
+    "LG": [
+        "lg 트윈스", "lg트윈스", "엘지 트윈스", "엘지트윈스", "lg twins", "트윈스",
+    ],
+    "KT": [
+        "kt wiz", "kt위즈", "케이티 위즈", "위즈", "wiz park", "위즈파크",
+    ],
+    "두산": [
+        "두산 베어스", "두산베어스", "doosan bears", "베어스",
+    ],
+    "SSG": [
+        "ssg 랜더스", "ssg랜더스", "ssg landers", "랜더스",
+    ],
+    "키움": [
+        "키움 히어로즈", "키움히어로즈", "kiwoom heroes", "히어로즈",
+    ],
+    "KIA": [
+        "kia 타이거즈", "kia타이거즈", "기아 타이거즈", "기아타이거즈", "kia tigers", "타이거즈",
+    ],
+    "삼성": [
+        "삼성 라이온즈", "삼성라이온즈", "samsung lions", "라이온즈",
+    ],
+    "NC": [
+        "nc 다이노스", "nc다이노스", "nc dinos", "다이노스",
+    ],
+    "롯데": [
+        "롯데 자이언츠", "롯데자이언츠", "lotte giants", "자이언츠",
+    ],
+    "한화": [
+        "한화 이글스", "한화이글스", "hanwha eagles", "이글스",
+    ],
+}
+
+# 모든 팀 이름이 다 기업/브랜드라 사실상 전부 애매하다고 보고 처리
+AMBIGUOUS_KEYS = set(TEAM_MAP.keys())
 
 # ✅ 전역 정규식 정의
 HASHTAG_CUT = re.compile(r"\s*[#＃].*$")
@@ -180,42 +262,28 @@ def _title_ok(title: str, team_key: str, team_full: str) -> bool:
         return False
     s = title.lower()
 
-    # 팀별 금칙어
+    # 1) 팀별 금칙어
     if team_key in NEGATIVE_BY_TEAM:
         for bad in NEGATIVE_BY_TEAM[team_key]:
             if bad.lower() in s:
                 return False
 
-    # LG, KT 같이 애매한 약어에 대한 추가 규칙
+    # 2) 농구/KBL 명시적으로 포함되면 모든 팀에서 컷 (야구 페이지니까)
+    if re.search(r"(농구|kbl|프로농구)", s):
+        return False
+
+    # 3) 기업/브랜드와 겹치는 애매한 팀들에 대한 추가 규칙
     if team_key in AMBIGUOUS_KEYS:
-        # LG: 농구팀/기업 설명 제거는 위 NEGATIVE 에서 처리
-        # KT: 단순 'KT'만 있는 통신/기타 영상 방지
-        has_baseball_signal = any(k.lower() in s for k in BASEBALL_SIGNALS)
+        has_core = any(k in s for k in BASEBALL_CORE_SIGNALS)
+        team_patterns = TEAM_TITLE_PATTERNS.get(team_key, [])
+        has_team_word = any(p in s for p in team_patterns)
 
-        if team_key == "KT":
-            # KT 위즈 관련 명시적인 패턴
-            kt_wiz_patterns = [
-                "kt wiz", "kt위즈", "케이티 위즈", "kt wiz park", "kt위즈 파크",
-                "위즈파크", "wiz park",
-            ]
-            has_kt_wiz_word = any(p in s for p in kt_wiz_patterns)
+        # 야구 핵심 신호어도 없고, 팀명/마스코트 패턴도 없으면 컷
+        if not (has_core or has_team_word):
+            return False
 
-            # 야구 신호어 또는 위즈 관련 단어 중 하나는 있어야 통과
-            if not (has_baseball_signal or has_kt_wiz_word):
-                return False
-
-        if team_key == "LG":
-            # LG 트윈스 관련 명시적인 패턴
-            lg_twins_patterns = [
-                "lg 트윈스", "lg트윈스", "엘지 트윈스", "엘지트윈스", "lg twins",
-            ]
-            has_lg_twins_word = any(p in s for p in lg_twins_patterns)
-            # LG는 기업/가전 이야기가 워낙 많으니, 팀명 패턴이나 야구 신호어가 없으면 컷
-            if not (has_baseball_signal or has_lg_twins_word):
-                return False
-
-    # 여기까지 통과했다면, 최소한 팀/야구 관련성이 있다고 보고,
-    # 팀명 또는 약어가 들어가 있거나 야구 신호어가 있으면 살린다.
+    # 4) 여기까지 통과했다면, 최소한 팀/야구 관련성이 있다고 보고,
+    # 팀 풀네임 또는 약어, 혹은 일반 야구 신호어가 들어가 있으면 살린다.
     full_lower = team_full.lower()
     key_lower = team_key.lower()
 
@@ -241,9 +309,11 @@ def _postprocess(videos, team_key: str, team_full: str):
 
             is_official = _is_official_channel(channel_title, team_key)
 
-            # 공식 채널이면 제목이 조금 애매해도 우선 통과시키고,
-            # 그렇지 않은 경우는 _title_ok 필터 적용
+            # 공식 채널이면 제목이 조금 애매해도 우선 통과,
+            # 그 외에는 _title_ok 필터 적용
             if not is_official and not _title_ok(t, team_key, team_full):
+                # 디버깅용 로그 (필요 없으면 주석 처리)
+                # app.logger.info("[DROP] team=%s title=%s", team_key, t)
                 continue
 
             item = {
