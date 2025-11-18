@@ -186,6 +186,20 @@ OFFICIAL_CHANNEL_KEYWORDS = {
     ],
 }
 
+# ✅ 구단 공식 YouTube 채널 ID
+OFFICIAL_CHANNEL_IDS = {
+    "KT":   ["UCvScyjGkBUx2CJDMNAi9Twg"],
+    "한화": ["UCdq4Ji3772xudYRUatdzRrg"],
+    "LG":   ["UCL6QZZxb-HR4hCh_eFAnQWA"],
+    "두산": ["UCsebzRfMhwYfjeBIxNX1brg"],
+    "KIA":  ["UCKp8knO8a6tSI1oaLjfd9XA"],
+    "SSG":  ["UCt8iRtgjVqm5rJHNl1TUojg"],
+    "삼성": ["UCMWAku3a3h65QpLm63Jf2pw"],
+    "키움": ["UC_MA8-XEaVmvyayPzG66IKg"],
+    "NC":   ["UC8_FRgynMX8wlGsU6Jh3zKg"],
+    "롯데": ["UCAZQZdSY5_YrziMPqXi-Zfw"],
+}
+
 # 제목 안에서 팀을 가리키는 패턴 (팀 전체/마스코트 명)
 TEAM_TITLE_PATTERNS = {
     "LG": [
@@ -244,10 +258,21 @@ def _clean_title(txt: str) -> str:
     return t
 
 
-def _is_official_channel(channel_title: str | None, team_key: str) -> bool:
+def _is_official_channel(channel_title: str | None,
+                         channel_id: str | None,
+                         team_key: str) -> bool:
     """
-    채널명이 구단 공식/준공식 채널 키워드를 포함하면 True.
+    채널 ID 또는 채널명이 구단 공식/준공식 채널이면 True.
+    1) OFFICIAL_CHANNEL_IDS[team_key] 안에 channel_id 가 있으면 무조건 True
+    2) 없으면 OFFICIAL_CHANNEL_KEYWORDS[team_key] 로 채널 이름 매칭
     """
+    # 1) channelId로 판별
+    if channel_id:
+        for cid in OFFICIAL_CHANNEL_IDS.get(team_key, []):
+            if channel_id == cid:
+                return True
+
+    # 2) 채널 이름 키워드로 판별
     if not channel_title:
         return False
     s = channel_title.lower()
@@ -306,8 +331,9 @@ def _postprocess(videos, team_key: str, team_full: str):
             raw_title = v.get("title") or ""
             t = _clean_title(raw_title)
             channel_title = v.get("channelTitle") or ""
+            channel_id = v.get("channelId") or ""
 
-            is_official = _is_official_channel(channel_title, team_key)
+            is_official = _is_official_channel(channel_title, channel_id, team_key)
 
             # 공식 채널이면 제목이 조금 애매해도 우선 통과,
             # 그 외에는 _title_ok 필터 적용
@@ -321,6 +347,7 @@ def _postprocess(videos, team_key: str, team_full: str):
                 "url": v.get("url"),
                 "thumbnail": v.get("thumbnail"),
                 "channelTitle": channel_title,
+                "channelId": channel_id,
                 "seconds": v.get("seconds"),
             }
 
