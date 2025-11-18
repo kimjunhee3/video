@@ -321,7 +321,7 @@ def _postprocess(videos, team_key: str, team_full: str):
     """
     - 제목 정리/필터
     - 구단 공식 채널 영상은 무조건 통과 + 리스트 상단에 배치
-    - 실패한 아이템은 건너뛰어 예외 방지
+    - 공식/일반 각각 업로드 최신순 정렬
     """
     official_list = []
     normal_list = []
@@ -338,8 +338,6 @@ def _postprocess(videos, team_key: str, team_full: str):
             # 공식 채널이면 제목이 조금 애매해도 우선 통과,
             # 그 외에는 _title_ok 필터 적용
             if not is_official and not _title_ok(t, team_key, team_full):
-                # 디버깅용 로그 (필요 없으면 주석 처리)
-                # app.logger.info("[DROP] team=%s title=%s", team_key, t)
                 continue
 
             item = {
@@ -349,6 +347,8 @@ def _postprocess(videos, team_key: str, team_full: str):
                 "channelTitle": channel_title,
                 "channelId": channel_id,
                 "seconds": v.get("seconds"),
+                # YouTube API snippet.publishedAt (ISO8601) 를 그대로 넘겨준다고 가정
+                "publishedAt": v.get("publishedAt") or "",
             }
 
             if is_official:
@@ -359,6 +359,15 @@ def _postprocess(videos, team_key: str, team_full: str):
         except Exception as e:
             app.logger.warning("postprocess drop: %s / raw=%s", e, v)
             continue
+
+    # publishedAt 기준 최신순 정렬
+    # ISO8601 문자열이면 reverse=True 정렬로 최신 → 오래된 순서가 맞음
+    official_list = sorted(
+        official_list, key=lambda x: x.get("publishedAt", ""), reverse=True
+    )
+    normal_list = sorted(
+        normal_list, key=lambda x: x.get("publishedAt", ""), reverse=True
+    )
 
     # 공식 채널 영상이 항상 앞에 오도록 합치기
     return official_list + normal_list
