@@ -2,9 +2,6 @@ from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import re
 import logging
-import os
-# [수정] NameError 및 ImportError 해결을 위해 typing 모듈의 필요한 타입을 명시적으로 import합니다.
-from typing import Optional, List, Dict, Any, Tuple 
 
 # ---------------------------
 # 1) 앱/기본 설정
@@ -32,8 +29,8 @@ TEAM_MAP = {
 # ---------------------------
 # 2) 크롤러/검색 함수 폴백 로딩
 # ---------------------------
-_search_func: Optional[callable] = None # NameError 해결
-_legacy_single_fetch: Optional[callable] = None # NameError 해결
+_search_func = None
+_legacy_single_fetch = None
 
 try:
     # (shorts, longs) 튜플을 반환하는 최신 함수
@@ -53,7 +50,7 @@ if _search_func is None:
             _legacy_single_fetch = None
 
 
-def _safe_search(team_name: str, max_results: int = 60) -> Tuple[List[Dict], List[Dict]]: 
+def _safe_search(team_name: str, max_results: int = 60):
     """
     통합 래퍼:
     - 우선 최신 search_videos_by_team(team, max_results) 사용 (shorts, longs)
@@ -191,15 +188,15 @@ OFFICIAL_CHANNEL_KEYWORDS = {
 
 # ✅ 구단 공식 YouTube 채널 ID
 OFFICIAL_CHANNEL_IDS = {
-    "KT":  ["UCvScyjGkBUx2CJDMNAi9Twg"],
+    "KT":   ["UCvScyjGkBUx2CJDMNAi9Twg"],
     "한화": ["UCdq4Ji3772xudYRUatdzRrg"],
-    "LG":  ["UCL6QZZxb-HR4hCh_eFAnQWA"],
+    "LG":   ["UCL6QZZxb-HR4hCh_eFAnQWA"],
     "두산": ["UCsebzRfMhwYfjeBIxNX1brg"],
-    "KIA": ["UCKp8knO8a6tSI1oaLjfd9XA"],
-    "SSG": ["UCt8iRtgjVqm5rJHNl1TUojg"],
+    "KIA":  ["UCKp8knO8a6tSI1oaLjfd9XA"],
+    "SSG":  ["UCt8iRtgjVqm5rJHNl1TUojg"],
     "삼성": ["UCMWAku3a3h65QpLm63Jf2pw"],
     "키움": ["UC_MA8-XEaVmvyayPzG66IKg"],
-    "NC":  ["UC8_FRgynMX8wlGsU6Jh3zKg"],
+    "NC":   ["UC8_FRgynMX8wlGsU6Jh3zKg"],
     "롯데": ["UCAZQZdSY5_YrziMPqXi-Zfw"],
 }
 
@@ -242,8 +239,8 @@ AMBIGUOUS_KEYS = set(TEAM_MAP.keys())
 
 # ✅ 전역 정규식 정의
 HASHTAG_CUT = re.compile(r"\s*[#＃].*$")
-SPACE_RE    = re.compile(r"\s+")              # 다중 공백 → 한 칸
-BAR_TRIM    = re.compile(r"^[\s\-\|·~]+|[\s\-\|·~]+$") # 양끝 구분자/공백 제거
+SPACE_RE    = re.compile(r"\s+")                               # 다중 공백 → 한 칸
+BAR_TRIM    = re.compile(r"^[\s\-\|·~]+|[\s\-\|·~]+$")         # 양끝 구분자/공백 제거
 
 
 def _clean_title(txt: str) -> str:
@@ -262,8 +259,8 @@ def _clean_title(txt: str) -> str:
 
 
 def _is_official_channel(channel_title: str | None,
-                             channel_id: str | None,
-                             team_key: str) -> bool:
+                         channel_id: str | None,
+                         team_key: str) -> bool:
     """
     채널 ID 또는 채널명이 구단 공식/준공식 채널이면 True.
     1) OFFICIAL_CHANNEL_IDS[team_key] 안에 channel_id 가 있으면 무조건 True
@@ -323,7 +320,7 @@ def _title_ok(title: str, team_key: str, team_full: str) -> bool:
 def _postprocess(videos, team_key: str, team_full: str):
     """
     - 제목 정리/필터
-    - 구단 공식 채널 영상은 무조건 통과 + 리스트 상단에 배치 (원본 로직 유지)
+    - 구단 공식 채널 영상은 무조건 통과 + 리스트 상단에 배치
     - 공식/일반 각각 업로드 최신순 정렬
     """
     official_list = []
@@ -337,9 +334,6 @@ def _postprocess(videos, team_key: str, team_full: str):
             channel_id = v.get("channelId") or ""
 
             is_official = _is_official_channel(channel_title, channel_id, team_key)
-            
-            # crawl_club.py에서 Shorts 분류를 보조하기 위해 is_shorts_by_title 플래그를 가져옴
-            is_shorts_by_title = v.get("is_shorts_by_title", False) 
 
             # 공식 채널이면 제목이 조금 애매해도 우선 통과,
             # 그 외에는 _title_ok 필터 적용
@@ -352,9 +346,8 @@ def _postprocess(videos, team_key: str, team_full: str):
                 "thumbnail": v.get("thumbnail"),
                 "channelTitle": channel_title,
                 "channelId": channel_id,
-                # is_shorts_by_title 필드는 postprocess에서는 사용되지 않지만, 
-                # 필터링 전의 crawl_club.py에서 Shorts 분류를 보조하는 역할을 수행함.
                 "seconds": v.get("seconds"),
+                # YouTube API snippet.publishedAt (ISO8601) 를 그대로 넘겨준다고 가정
                 "publishedAt": v.get("publishedAt") or "",
             }
 
@@ -368,6 +361,7 @@ def _postprocess(videos, team_key: str, team_full: str):
             continue
 
     # publishedAt 기준 최신순 정렬
+    # ISO8601 문자열이면 reverse=True 정렬로 최신 → 오래된 순서가 맞음
     official_list = sorted(
         official_list, key=lambda x: x.get("publishedAt", ""), reverse=True
     )
@@ -431,5 +425,6 @@ def search():
 # ---------------------------
 if __name__ == "__main__":
     # Render 환경에선 PORT 환경변수를 쓰지만, 로컬 디폴트는 5000
+    import os
     port = int(os.getenv("PORT", "5000"))
     app.run(host="0.0.0.0", port=port, debug=True)
