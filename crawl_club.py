@@ -14,6 +14,34 @@ _DURATION_RE = re.compile(
     r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?"
 )
 
+# ---------------------------
+# 앱 설정에서 복사된 팀 정보
+# ---------------------------
+
+TEAM_MAP = {
+    "LG": "LG 트윈스", "두산": "두산 베어스", "SSG": "SSG 랜더스", "키움": "키움 히어로즈",
+    "KT": "KT 위즈", "KIA": "KIA 타이거즈", "삼성": "삼성 라이온즈", "NC": "NC 다이노스",
+    "롯데": "롯데 자이언츠", "한화": "한화 이글스",
+}
+
+# ✅ 구단 공식 YouTube 채널 ID
+OFFICIAL_CHANNEL_IDS = {
+    "KT":  ["UCvScyjGkBUx2CJDMNAi9Twg"],
+    "한화": ["UCdq4Ji3772xudYRUatdzRrg"],
+    "LG":  ["UCL6QZZxb-HR4hCh_eFAnQWA"],
+    "두산": ["UCsebzRfMhwYfjeBIxNX1brg"],
+    "KIA":  ["UCKp8knO8a6tSI1oaLjfd9XA"],
+    "SSG":  ["UCt8iRtgjVqm5rJHNl1TUojg"],
+    "삼성": ["UCMWAku3a3h65QpLm63Jf2pw"],
+    "키움": ["UC_MA8-XEaVmvyayPzG66IKg"],
+    "NC":  ["UC8_FRgynMX8wlGsU6Jh3zKg"],
+    "롯데": ["UCAZQZdSY5_YrziMPqXi-Zfw"],
+}
+
+
+# ---------------------------
+# 유틸리티 함수
+# ---------------------------
 
 def _iso8601_to_seconds(duration: str) -> int:
     if not duration:
@@ -40,88 +68,152 @@ def _normalize_query(team: str) -> str:
     team = (team or "").strip()
     if not team:
         return ""
-    # 기본적으로 하이라이트 중심으로
+    # 일반 검색은 여전히 하이라이트 중심으로
     return f"{team} 하이라이트"
 
 
-def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[Dict], List[Dict]]:
+# ---------------------------
+# 메인 검색 함수 (수정됨)
+# ---------------------------
+
+def search_videos_by_team(team_name: str, team_key: str, max_results: int = 60) -> Tuple[List[Dict], List[Dict]]:
     """
-    팀 이름으로 영상을 검색하고, 길이를 조회해서 (shorts, longs) 두 리스트로 나눠 반환.
-    각 아이템: {title, videoId, thumbnail, channelTitle, publishedAt, url, duration, seconds}
+    1. 공식 채널 ID로 최신 영상 검색 (우선)
+    2. 일반 검색어 ("팀명 하이라이트")로 최신 영상 검색 (보조)
+    3. 모든 영상의 길이를 조회하여 (shorts, longs) 두 리스트로 나눠 반환.
     """
     team_name = (team_name or "").strip()
-    if not team_name:
+    team_key = (team_key or "").strip()
+    if not team_name or not team_key:
         return [], []
 
     yt = _build_yt_client()
     if yt is None:
-        # API 키 없으면 빈 결과
         return [], []
 
-    q = _normalize_query(team_name)
+    all_base_map: Dict[str, Dict[str, Any]] = {}
 
-    try:
-        # 1) search로 비디오 id 모으기
-        search_resp = (
-            yt.search()
-            .list(
-                part="snippet",
-                q=q,
-                type="video",
-                maxResults=max(1, min(max_results, 50)),
-                order="date",
-                safeSearch="none",
+    # 1. 공식 채널 검색 (Priority)
+    channel_ids = OFFICIAL_CHANNEL_IDS.get(team_key, [])
+    official_count_limit = max(1, min(max_results // 2, 25)) # 공식 채널에서 가져올 최대 개수
+
+    if channel_ids:
+        for channel_id in channel_ids:
+            try:
+                # search API를 사용하여 특정 채널의 최신 영상 검색
+                channel_search_resp = (
+                    yt.search()
+                    .list(
+                        part="snippet",
+                        channelId=channel_id,
+                        type="video",
+                        maxResults=official_count_limit, 
+                        order="date", # 최신순
+                    )
+                    .execute()
+                )
+                
+                for it in channel_search_resp.get("items", []):
+                    vid = (it.get("id") or {}).get("videoId")
+                    if not vid or vid in all_base_map:
+                        continue
+                    sn = it.get("snippet", {})
+                    thumbs = sn.get("thumbnails") or {}
+                    thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
+                    
+                    all_base_map[vid] = {
+                        "title": sn.get("title"),
+                        "videoId": vid,
+                        "thumbnail": thumb,
+                        "channelTitle": sn.get("channelTitle"),
+                        "channelId": sn.get("channelId"),
+                        "publishedAt": sn.get("publishedAt"),
+                        "url": f"https://www.youtube.com/watch?v={vid}",
+                    }
+
+            except HttpError as e:
+                print(f"Error fetching official channel {channel_id}: {e}") 
+            except Exception as e:
+                print(f"Unexpected error fetching official channel {channel_id}: {e}") 
+
+    # 2. 일반 검색 (Fallback/Supplement) - 공식 채널 영상이 부족할 경우 보충
+    remaining_results = max_results - len(all_base_map)
+    if remaining_results > 0:
+        q = _normalize_query(team_name) 
+        
+        try:
+            general_search_resp = (
+                yt.search()
+                .list(
+                    part="snippet",
+                    q=q,
+                    type="video",
+                    maxResults=remaining_results,
+                    order="date",
+                    safeSearch="none",
+                )
+                .execute()
             )
-            .execute()
-        )
-    except HttpError:
-        return [], []
-    except Exception:
-        return [], []
+            
+            for it in general_search_resp.get("items", []):
+                vid = (it.get("id") or {}).get("videoId")
+                if not vid or vid in all_base_map: # 중복 제거
+                    continue
+                sn = it.get("snippet", {})
+                thumbs = sn.get("thumbnails") or {}
+                thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
+                
+                all_base_map[vid] = {
+                    "title": sn.get("title"),
+                    "videoId": vid,
+                    "thumbnail": thumb,
+                    "channelTitle": sn.get("channelTitle"),
+                    "channelId": sn.get("channelId"),
+                    "publishedAt": sn.get("publishedAt"),
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                }
+                
+        except HttpError as e:
+            print(f"Error fetching general search: {e}")
+        except Exception as e:
+            print(f"Unexpected error fetching general search: {e}")
 
-    items = search_resp.get("items", [])
-    if not items:
-        return [], []
 
-    # id 목록 및 기본 메타
-    ids: List[str] = []
-    base_map: Dict[str, Dict[str, Any]] = {}
-    for it in items:
-        vid = (it.get("id") or {}).get("videoId")
-        if not vid:
-            continue
-        sn = it.get("snippet", {})
-        thumbs = sn.get("thumbnails") or {}
-        thumb = (thumbs.get("high") or {}).get("url") or (thumbs.get("default") or {}).get("url")
-        base_map[vid] = {
-            "title": sn.get("title"),
-            "videoId": vid,
-            "thumbnail": thumb,
-            "channelTitle": sn.get("channelTitle"),
-            "publishedAt": sn.get("publishedAt"),
-            "url": f"https://www.youtube.com/watch?v={vid}",
-        }
-        ids.append(vid)
+    ids = list(all_base_map.keys())
 
-    # 2) videos.list로 길이 가져오기
+    # 3. 길이 조회 및 분류
     shorts: List[Dict[str, Any]] = []
     longs: List[Dict[str, Any]] = []
+
     if not ids:
         return [], []
 
     try:
+        # 최대 50개까지만 한번에 조회 가능 (ids가 60개를 넘기면 분할 필요, 여기선 최대 60개이므로 괜찮음)
         detail_resp = yt.videos().list(part="contentDetails", id=",".join(ids)).execute()
+        
         for v in detail_resp.get("items", []):
             vid = v.get("id")
             dur_iso = (v.get("contentDetails") or {}).get("duration")
             secs = _iso8601_to_seconds(dur_iso)
-            data = {**base_map.get(vid, {}), "duration": dur_iso, "seconds": secs}
+            
+            data = all_base_map.get(vid)
+            if not data or not data.get("publishedAt"):
+                 continue
+
+            data_with_details = {**data, "duration": dur_iso, "seconds": secs}
+            
             if secs <= SHORT_MAX_SEC:
-                shorts.append(data)
+                shorts.append(data_with_details)
             else:
-                longs.append(data)
-    except Exception:
-        # 길이 조회 실패 시 전부 롱폼으로 처리
-        longs = list(base_map.values())
+                longs.append(data_with_details)
+
+    except Exception as e:
+        # 길이 조회 실패 시, 전부 롱폼으로 간주하고 반환
+        print(f"Error fetching video details, treating all as long form: {e}")
+        longs = [
+            {**data, "duration": None, "seconds": 0} 
+            for vid, data in all_base_map.items() if data.get("publishedAt")
+        ]
 
     return shorts, longs
