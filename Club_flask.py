@@ -3,7 +3,8 @@ from flask_cors import CORS
 import re
 import logging
 import os
-from typing import Optional, List, Dict, Any, Tuple
+# [수정] NameError 및 ImportError 해결을 위해 typing 모듈의 필요한 타입을 명시적으로 import합니다.
+from typing import Optional, List, Dict, Any, Tuple 
 
 # ---------------------------
 # 1) 앱/기본 설정
@@ -52,7 +53,7 @@ if _search_func is None:
             _legacy_single_fetch = None
 
 
-def _safe_search(team_name: str, max_results: int = 60) -> Tuple[List[Dict], List[Dict]]: # Type Hint 추가
+def _safe_search(team_name: str, max_results: int = 60) -> Tuple[List[Dict], List[Dict]]: 
     """
     통합 래퍼:
     - 우선 최신 search_videos_by_team(team, max_results) 사용 (shorts, longs)
@@ -78,7 +79,7 @@ def _safe_search(team_name: str, max_results: int = 60) -> Tuple[List[Dict], Lis
 
 
 # ---------------------------
-# 3) 제목/채널 정제/필터 (원본 유지)
+# 3) 제목/채널 정제/필터
 # ---------------------------
 
 # 팀별 금칙어 (비야구 컨텍스트 제거용)
@@ -336,8 +337,11 @@ def _postprocess(videos, team_key: str, team_full: str):
             channel_id = v.get("channelId") or ""
 
             is_official = _is_official_channel(channel_title, channel_id, team_key)
+            
+            # crawl_club.py에서 Shorts 분류를 보조하기 위해 is_shorts_by_title 플래그를 가져옴
+            is_shorts_by_title = v.get("is_shorts_by_title", False) 
 
-            # 공식 채널이면 제목이 조금 애매해도 우선 통과, (원본 로직 유지)
+            # 공식 채널이면 제목이 조금 애매해도 우선 통과,
             # 그 외에는 _title_ok 필터 적용
             if not is_official and not _title_ok(t, team_key, team_full):
                 continue
@@ -348,8 +352,9 @@ def _postprocess(videos, team_key: str, team_full: str):
                 "thumbnail": v.get("thumbnail"),
                 "channelTitle": channel_title,
                 "channelId": channel_id,
+                # is_shorts_by_title 필드는 postprocess에서는 사용되지 않지만, 
+                # 필터링 전의 crawl_club.py에서 Shorts 분류를 보조하는 역할을 수행함.
                 "seconds": v.get("seconds"),
-                # YouTube API snippet.publishedAt (ISO8601) 를 그대로 넘겨준다고 가정
                 "publishedAt": v.get("publishedAt") or "",
             }
 
@@ -363,7 +368,6 @@ def _postprocess(videos, team_key: str, team_full: str):
             continue
 
     # publishedAt 기준 최신순 정렬
-    # ISO8601 문자열이면 reverse=True 정렬로 최신 → 오래된 순서가 맞음
     official_list = sorted(
         official_list, key=lambda x: x.get("publishedAt", ""), reverse=True
     )
@@ -413,7 +417,6 @@ def search():
         club_full = TEAM_MAP.get(club, club)
 
     # 검색
-    # _safe_search는 team_name만 전달하지만, crawl_club.py에서 team_name을 기반으로 공식 채널 검색을 수행하도록 수정됨
     shorts, longs = _safe_search(club_full, max_results=60)
 
     # 정제/필터
