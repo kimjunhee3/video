@@ -3,8 +3,7 @@ from flask_cors import CORS
 import re
 import logging
 import os
-# [수정] NameError: name 'Optional' is not defined 해결을 위해 추가
-from typing import Optional, List, Dict, Any, Tuple, callable 
+from typing import Optional, List, Dict, Any, Tuple
 
 # ---------------------------
 # 1) 앱/기본 설정
