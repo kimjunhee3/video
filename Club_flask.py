@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import re
 import logging
+from typing import List, Dict, Any, Tuple # _safe_search를 위한 타입 힌트 추가
 
 # ---------------------------
 # 1) 앱/기본 설정
@@ -29,54 +30,36 @@ TEAM_MAP = {
 # ---------------------------
 # 2) 크롤러/검색 함수 폴백 로딩
 # ---------------------------
-_search_func = None
-_legacy_single_fetch = None
+_search_func: Optional[callable] = None
 
 try:
-    # (shorts, longs) 튜플을 반환하는 최신 함수
+    # (shorts, longs) 튜플을 반환하는 최신 함수 (team_name, team_key를 받음)
+    # Note: 이 함수는 아래 두 번째 코드 블록에 정의됩니다.
     from crawl_club import search_videos_by_team as _search_func  # type: ignore
 except Exception:
     _search_func = None
 
-if _search_func is None:
-    # 단일 리스트만 반환하는 과거 함수와의 호환
-    try:
-        from crawl_club import get_youtube_videos as _legacy_single_fetch  # type: ignore
-    except Exception:
-        _legacy_single_fetch = None
-        try:
-            from crawl_youtube import search_youtube as _legacy_single_fetch  # type: ignore
-        except Exception:
-            _legacy_single_fetch = None
 
-
-def _safe_search(team_name: str, max_results: int = 60):
+def _safe_search(team_name: str, team_key: str, max_results: int = 60) -> Tuple[List[Dict], List[Dict]]:
     """
     통합 래퍼:
-    - 우선 최신 search_videos_by_team(team, max_results) 사용 (shorts, longs)
-    - 없으면 단일 함수로 longs만 채움
-    - 모두 실패하면 빈 리스트
+    - search_videos_by_team(team_name, team_key, max_results) 사용 (shorts, longs)
+    - 실패하면 빈 리스트
     """
     if _search_func:
         try:
-            res = _search_func(team_name, max_results=max_results)
+            # 변경된 시그니처에 맞춰 team_key를 전달
+            res = _search_func(team_name, team_key, max_results=max_results)
             if isinstance(res, (list, tuple)) and len(res) == 2:
                 return res[0] or [], res[1] or []
         except Exception as e:
             app.logger.warning("search_videos_by_team failed: %s", e)
 
-    if _legacy_single_fetch:
-        try:
-            longs = _legacy_single_fetch(team_name, max_results=max_results) or []
-            return [], longs
-        except Exception as e:
-            app.logger.warning("legacy fetch failed: %s", e)
-
     return [], []
 
 
 # ---------------------------
-# 3) 제목/채널 정제/필터
+# 3) 제목/채널 정제/필터 (변경 없음, 재사용)
 # ---------------------------
 
 # 팀별 금칙어 (비야구 컨텍스트 제거용)
@@ -188,15 +171,15 @@ OFFICIAL_CHANNEL_KEYWORDS = {
 
 # ✅ 구단 공식 YouTube 채널 ID
 OFFICIAL_CHANNEL_IDS = {
-    "KT":   ["UCvScyjGkBUx2CJDMNAi9Twg"],
+    "KT": ["UCvScyjGkBUx2CJDMNAi9Twg"],
     "한화": ["UCdq4Ji3772xudYRUatdzRrg"],
-    "LG":   ["UCL6QZZxb-HR4hCh_eFAnQWA"],
+    "LG": ["UCL6QZZxb-HR4hCh_eFAnQWA"],
     "두산": ["UCsebzRfMhwYfjeBIxNX1brg"],
-    "KIA":  ["UCKp8knO8a6tSI1oaLjfd9XA"],
-    "SSG":  ["UCt8iRtgjVqm5rJHNl1TUojg"],
+    "KIA": ["UCKp8knO8a6tSI1oaLjfd9XA"],
+    "SSG": ["UCt8iRtgjVqm5rJHNl1TUojg"],
     "삼성": ["UCMWAku3a3h65QpLm63Jf2pw"],
     "키움": ["UC_MA8-XEaVmvyayPzG66IKg"],
-    "NC":   ["UC8_FRgynMX8wlGsU6Jh3zKg"],
+    "NC": ["UC8_FRgynMX8wlGsU6Jh3zKg"],
     "롯데": ["UCAZQZdSY5_YrziMPqXi-Zfw"],
 }
 
@@ -239,8 +222,8 @@ AMBIGUOUS_KEYS = set(TEAM_MAP.keys())
 
 # ✅ 전역 정규식 정의
 HASHTAG_CUT = re.compile(r"\s*[#＃].*$")
-SPACE_RE    = re.compile(r"\s+")                               # 다중 공백 → 한 칸
-BAR_TRIM    = re.compile(r"^[\s\-\|·~]+|[\s\-\|·~]+$")         # 양끝 구분자/공백 제거
+SPACE_RE    = re.compile(r"\s+")              # 다중 공백 → 한 칸
+BAR_TRIM    = re.compile(r"^[\s\-\|·~]+|[\s\-\|·~]+$") # 양끝 구분자/공백 제거
 
 
 def _clean_title(txt: str) -> str:
@@ -259,8 +242,8 @@ def _clean_title(txt: str) -> str:
 
 
 def _is_official_channel(channel_title: str | None,
-                         channel_id: str | None,
-                         team_key: str) -> bool:
+                             channel_id: str | None,
+                             team_key: str) -> bool:
     """
     채널 ID 또는 채널명이 구단 공식/준공식 채널이면 True.
     1) OFFICIAL_CHANNEL_IDS[team_key] 안에 channel_id 가 있으면 무조건 True
@@ -374,7 +357,7 @@ def _postprocess(videos, team_key: str, team_full: str):
 
 
 # ---------------------------
-# 4) 라우트
+# 4) 라우트 (수정됨)
 # ---------------------------
 @app.get("/healthz")
 def health():
@@ -397,7 +380,7 @@ def search():
     if not club:
         return jsonify({"short": [], "long": []})
 
-    # 약어 → 한글 풀네임 매핑
+    # 약어 → 한글 풀네임 매핑 (team_key를 찾음)
     team_key = None
     club_full = None
     for k, full in TEAM_MAP.items():
@@ -410,8 +393,8 @@ def search():
         team_key = club
         club_full = TEAM_MAP.get(club, club)
 
-    # 검색
-    shorts, longs = _safe_search(club_full, max_results=60)
+    # 검색 (team_key도 전달)
+    shorts, longs = _safe_search(club_full, team_key, max_results=60)
 
     # 정제/필터
     shorts = _postprocess(shorts, team_key, club_full)
