@@ -15,32 +15,24 @@ _DURATION_RE = re.compile(
 )
 
 # ---------------------------
-# 앱 설정에서 복사된 팀 정보
+# 공식 채널 검색을 위한 팀 정보 (Club_flask.py에서 복사하여 내부적으로 사용)
 # ---------------------------
-
 TEAM_MAP = {
     "LG": "LG 트윈스", "두산": "두산 베어스", "SSG": "SSG 랜더스", "키움": "키움 히어로즈",
     "KT": "KT 위즈", "KIA": "KIA 타이거즈", "삼성": "삼성 라이온즈", "NC": "NC 다이노스",
     "롯데": "롯데 자이언츠", "한화": "한화 이글스",
 }
 
-# ✅ 구단 공식 YouTube 채널 ID
 OFFICIAL_CHANNEL_IDS = {
-    "KT":  ["UCvScyjGkBUx2CJDMNAi9Twg"],
-    "한화": ["UCdq4Ji3772xudYRUatdzRrg"],
-    "LG":  ["UCL6QZZxb-HR4hCh_eFAnQWA"],
-    "두산": ["UCsebzRfMhwYfjeBIxNX1brg"],
-    "KIA":  ["UCKp8knO8a6tSI1oaLjfd9XA"],
-    "SSG":  ["UCt8iRtgjVqm5rJHNl1TUojg"],
-    "삼성": ["UCMWAku3a3h65QpLm63Jf2pw"],
-    "키움": ["UC_MA8-XEaVmvyayPzG66IKg"],
-    "NC":  ["UC8_FRgynMX8wlGsU6Jh3zKg"],
-    "롯데": ["UCAZQZdSY5_YrziMPqXi-Zfw"],
+    "KT":  ["UCvScyjGkBUx2CJDMNAi9Twg"], "한화": ["UCdq4Ji3772xudYRUatdzRrg"],
+    "LG":  ["UCL6QZZxb-HR4hCh_eFAnQWA"], "두산": ["UCsebzRfMhwYfjeBIxNX1brg"],
+    "KIA":  ["UCKp8knO8a6tSI1oaLjfd9XA"], "SSG":  ["UCt8iRtgjVqm5rJHNl1TUojg"],
+    "삼성": ["UCMWAku3a3h65QpLm63Jf2pw"], "키움": ["UC_MA8-XEaVmvyayPzG66IKg"],
+    "NC":  ["UC8_FRgynMX8wlGsU6Jh3zKg"], "롯데": ["UCAZQZdSY5_YrziMPqXi-Zfw"],
 }
 
-
 # ---------------------------
-# 유틸리티 함수
+# 유틸리티 함수 (원본 유지)
 # ---------------------------
 
 def _iso8601_to_seconds(duration: str) -> int:
@@ -68,23 +60,16 @@ def _normalize_query(team: str) -> str:
     team = (team or "").strip()
     if not team:
         return ""
-    # 일반 검색은 여전히 하이라이트 중심으로
+    # 기본적으로 하이라이트 중심으로
     return f"{team} 하이라이트"
 
 
-# ---------------------------
-# 메인 검색 함수 (수정됨)
-# ---------------------------
-
-def search_videos_by_team(team_name: str, team_key: str, max_results: int = 60) -> Tuple[List[Dict], List[Dict]]:
+def search_videos_by_team(team_name: str, max_results: int = 24) -> Tuple[List[Dict], List[Dict]]:
     """
-    1. 공식 채널 ID로 최신 영상 검색 (우선)
-    2. 일반 검색어 ("팀명 하이라이트")로 최신 영상 검색 (보조)
-    3. 모든 영상의 길이를 조회하여 (shorts, longs) 두 리스트로 나눠 반환.
+    [수정] 팀명을 기반으로 팀 키(LG, KT 등)를 찾아 공식 채널 우선 검색을 수행합니다.
     """
     team_name = (team_name or "").strip()
-    team_key = (team_key or "").strip()
-    if not team_name or not team_key:
+    if not team_name:
         return [], []
 
     yt = _build_yt_client()
@@ -92,10 +77,13 @@ def search_videos_by_team(team_name: str, team_key: str, max_results: int = 60) 
         return [], []
 
     all_base_map: Dict[str, Dict[str, Any]] = {}
+    
+    # team_name(풀네임)을 team_key(약어)로 매핑
+    team_key = next((k for k, v in TEAM_MAP.items() if v == team_name), None)
 
-    # 1. 공식 채널 검색 (Priority)
-    channel_ids = OFFICIAL_CHANNEL_IDS.get(team_key, [])
-    official_count_limit = max(1, min(max_results // 2, 25)) # 공식 채널에서 가져올 최대 개수
+    # 1. [우선] 공식 채널 검색
+    channel_ids = OFFICIAL_CHANNEL_IDS.get(team_key, []) if team_key else []
+    official_count_limit = max(1, min(max_results * 2 // 3, 30)) # 전체 2/3 정도 할당
 
     if channel_ids:
         for channel_id in channel_ids:
@@ -132,16 +120,19 @@ def search_videos_by_team(team_name: str, team_key: str, max_results: int = 60) 
                     }
 
             except HttpError as e:
+                # 에러 발생 시 로그를 남기고 다음 채널로 이동
                 print(f"Error fetching official channel {channel_id}: {e}") 
             except Exception as e:
                 print(f"Unexpected error fetching official channel {channel_id}: {e}") 
 
-    # 2. 일반 검색 (Fallback/Supplement) - 공식 채널 영상이 부족할 경우 보충
+    # 2. [보조] 일반 검색 (하이라이트 쿼리)
     remaining_results = max_results - len(all_base_map)
+    # 여유분 15개 추가 (필터링에 대비)
     if remaining_results > 0:
         q = _normalize_query(team_name) 
         
         try:
+            # 일반 검색으로 부족한 개수만큼 채우기 (최대 max_results 초과하지 않도록)
             general_search_resp = (
                 yt.search()
                 .list(
@@ -178,10 +169,9 @@ def search_videos_by_team(team_name: str, team_key: str, max_results: int = 60) 
         except Exception as e:
             print(f"Unexpected error fetching general search: {e}")
 
-
     ids = list(all_base_map.keys())
 
-    # 3. 길이 조회 및 분류
+    # 3. 길이 조회 및 분류 (원본 유지)
     shorts: List[Dict[str, Any]] = []
     longs: List[Dict[str, Any]] = []
 
@@ -189,28 +179,22 @@ def search_videos_by_team(team_name: str, team_key: str, max_results: int = 60) 
         return [], []
 
     try:
-        # 최대 50개까지만 한번에 조회 가능 (ids가 60개를 넘기면 분할 필요, 여기선 최대 60개이므로 괜찮음)
         detail_resp = yt.videos().list(part="contentDetails", id=",".join(ids)).execute()
-        
         for v in detail_resp.get("items", []):
             vid = v.get("id")
             dur_iso = (v.get("contentDetails") or {}).get("duration")
             secs = _iso8601_to_seconds(dur_iso)
+            data = {**all_base_map.get(vid, {}), "duration": dur_iso, "seconds": secs}
             
-            data = all_base_map.get(vid)
-            if not data or not data.get("publishedAt"):
-                 continue
+            # publishedAt이 없는 데이터는 제외 (필터링을 위해)
+            if not data.get("publishedAt"): continue
 
-            data_with_details = {**data, "duration": dur_iso, "seconds": secs}
-            
             if secs <= SHORT_MAX_SEC:
-                shorts.append(data_with_details)
+                shorts.append(data)
             else:
-                longs.append(data_with_details)
-
-    except Exception as e:
-        # 길이 조회 실패 시, 전부 롱폼으로 간주하고 반환
-        print(f"Error fetching video details, treating all as long form: {e}")
+                longs.append(data)
+    except Exception:
+        # 길이 조회 실패 시 전부 롱폼으로 처리
         longs = [
             {**data, "duration": None, "seconds": 0} 
             for vid, data in all_base_map.items() if data.get("publishedAt")
