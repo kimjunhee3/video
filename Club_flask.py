@@ -2,7 +2,8 @@ from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import re
 import logging
-from typing import List, Dict, Any, Tuple # _safe_search를 위한 타입 힌트 추가
+from typing import List, Dict, Any, Tuple, Optional 
+# --- -------------------------- ---
 
 # ---------------------------
 # 1) 앱/기본 설정
